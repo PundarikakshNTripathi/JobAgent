@@ -75,13 +75,18 @@ CREATE TABLE IF NOT EXISTS triage(
 CREATE TABLE IF NOT EXISTS packets(
   job_id TEXT PRIMARY KEY, dir TEXT, at TEXT, referral_at TEXT, filled_at TEXT, fill_report TEXT);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS llm_log(ts TEXT, kind TEXT, model TEXT, inp INTEGER, cache_create INTEGER, cache_read INTEGER, outp INTEGER, cost REAL);
+CREATE TABLE IF NOT EXISTS watch(job_id TEXT PRIMARY KEY, added TEXT, reason TEXT, next_step TEXT, referral_state TEXT DEFAULT 'none', deadline TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, name TEXT, org TEXT, kind TEXT, url TEXT, window TEXT, eligibility TEXT, notes TEXT, added TEXT);
 CREATE TABLE IF NOT EXISTS budget(day TEXT, kind TEXT, n INTEGER, PRIMARY KEY(day, kind));
 """
 
 
 def db():
-    c = sqlite3.connect(os.path.join(DATA, "jobs.db"))
+    c = sqlite3.connect(os.path.join(DATA, "jobs.db"), timeout=90)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA busy_timeout=90000")
     c.executescript(SCHEMA)
     return c
 
@@ -150,9 +155,23 @@ def claude_bin():
     return shutil.which("claude") or shutil.which("claude.cmd") or "claude"
 
 
-def run_claude(prompt, *, allowed_tools="", model=None, timeout=300, extra_args=None, cwd=None, max_turns=None):
-    """Run `claude -p` headless on the user's subscription. Returns (text, raw_json_or_None)."""
-    args = [claude_bin(), "-p", "--output-format", "json"]
+LEAN_SYSTEM = "You are a precise assistant inside an automation pipeline. Follow the task exactly. When asked for JSON, output only the JSON."
+_EMPTY_MCP = os.path.join(DATA, "mcp-empty.json")
+
+
+def run_claude(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra_args=None, cwd=None, max_turns=None,
+               mcp_config=None, persist=False):
+    """Run `claude -p` headless on the user's subscription in LEAN mode: no user MCP servers, no skills, no default
+    Claude Code system prompt, only the built-in tools actually needed (cuts ~27k input tokens/call to <1k).
+    mcp_config: path of an MCP config to load (browser steps). persist=True keeps the session transcript for auditing.
+    Logs token usage to the llm_log table. Returns (text, raw_json_or_None)."""
+    if not os.path.exists(_EMPTY_MCP):
+        json.dump({"mcpServers": {}}, open(_EMPTY_MCP, "w"))
+    builtin = ",".join(x for x in allowed_tools.split(",") if x and not x.startswith("mcp__"))
+    args = [claude_bin(), "-p", "--output-format", "json", "--strict-mcp-config", "--mcp-config", mcp_config or _EMPTY_MCP,
+            "--disable-slash-commands", "--setting-sources", "user", "--system-prompt", LEAN_SYSTEM, "--tools", builtin]
+    if not persist:
+        args.append("--no-session-persistence")
     if model:
         args += ["--model", model]
     if allowed_tools:
@@ -161,8 +180,7 @@ def run_claude(prompt, *, allowed_tools="", model=None, timeout=300, extra_args=
         args += ["--max-turns", str(max_turns)]
     args += extra_args or []
     try:
-        p = subprocess.run(args, input=prompt, capture_output=True, text=True, encoding="utf-8",
-                           timeout=timeout, cwd=cwd or ROOT)
+        p = subprocess.run(args, input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=timeout, cwd=cwd or ROOT)
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"claude timed out after {timeout}s")
     if p.returncode != 0 and not p.stdout.strip():
@@ -171,6 +189,15 @@ def run_claude(prompt, *, allowed_tools="", model=None, timeout=300, extra_args=
         j = json.loads(p.stdout)
     except json.JSONDecodeError:
         return p.stdout, None
+    try:
+        u = j.get("usage", {})
+        c = db()
+        c.execute("INSERT INTO llm_log(ts,kind,model,inp,cache_create,cache_read,outp,cost) VALUES(?,?,?,?,?,?,?,?)",
+                  (now(), kind, model or "default", u.get("input_tokens", 0), u.get("cache_creation_input_tokens", 0),
+                   u.get("cache_read_input_tokens", 0), u.get("output_tokens", 0), j.get("total_cost_usd", 0)))
+        c.commit()
+    except Exception:
+        pass
     if j.get("is_error"):
         raise RuntimeError(f"claude error: {str(j.get('result'))[:500]}")
     return j.get("result", ""), j

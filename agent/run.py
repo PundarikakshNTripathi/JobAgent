@@ -6,6 +6,8 @@
   packet <id>         build cover letter / answers / resume choice for a job
   referral <id>       research connections + draft outreach for a job
   fill <id>           fill the application in the agent Chrome (never submits)
+  today [--force]     build out/today.md (improvement tasks, outreach, watchlist) + usage   usage   Claude token usage
+  watch | linkedin <id> | yc-profile | enable-schedule | disable-schedule
   scout               Claude web scout (X, blocked career pages, safety boards, new companies)
   status | dashboard  summary / regenerate out/dashboard.html
   mark <id> applied|skip|dismissed
@@ -17,7 +19,7 @@ import datetime as dt, os, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (db, log, notify, SETTINGS, ROOT, DATA, budget_used, meta_get, meta_set, now)  # noqa: E402
-import pipeline, packets, referrals, fill, scout, dashboard  # noqa: E402
+import pipeline, packets, referrals, fill, scout, dashboard, stakes, today  # noqa: E402
 
 LOCK = os.path.join(DATA, "cycle.lock")
 
@@ -36,27 +38,28 @@ def in_fill_window():
 
 
 def cycle():
+    """Economy cycle: polling is free; Claude steps are capped per day (see settings.json)."""
     if not acquire_lock():
         return
     try:
         c = db()
         new_ids, first = pipeline.poll()
         pipeline.instant_alerts(new_ids, first)
-        # LLM work, each capped per day to protect the subscription
+        stakes.promote_triaged()
         if budget_used(c, "triage_calls") < SETTINGS["max_triage_calls_per_day"]:
             pipeline.triage()
-        if budget_used(c, "scout") < SETTINGS.get("scout_per_day", 1) and dt.datetime.now().hour >= 7:
+        if dt.datetime.now().hour >= 7 and scout.due():
             try:
                 scout.run_scout()
-                pipeline.triage(10)
             except Exception as ex:
                 log(f"scout failed: {ex}")
         built = packets.run_packets()
-        # referral plans for the strongest new packets
-        left = SETTINGS.get("max_referrals_per_day", 4) - budget_used(c, "referrals")
+        built += packets.run_watch_drafts(1)
+        left = SETTINGS.get("max_referrals_per_day", 1) - budget_used(c, "referrals")
         if left > 0:
-            for r in c.execute("""SELECT j.id FROM jobs j JOIN packets p ON p.job_id=j.id JOIN triage t ON t.job_id=j.id
-                                  WHERE p.referral_at IS NULL AND (t.needs_referral=1 OR j.tier IN ('S','A')) ORDER BY t.fit DESC LIMIT ?""", (left,)).fetchall():
+            # watchlist first (referral-first strategy), then normal packets
+            for r in c.execute("""SELECT p.job_id id FROM packets p JOIN jobs j ON j.id=p.job_id LEFT JOIN triage t ON t.job_id=p.job_id
+                                  WHERE p.referral_at IS NULL AND j.status IN ('watch','packet') ORDER BY (j.status='watch') DESC, COALESCE(t.fit,0) DESC LIMIT ?""", (left,)).fetchall():
                 try:
                     referrals.plan_referral(r["id"])
                 except Exception as ex:
@@ -72,8 +75,11 @@ def cycle():
                 except Exception as ex:
                     log(f"fill failed {r['id']}: {ex}")
         path = dashboard.build()
-        if built and not filled:
-            notify(f"{len(built)} application packet(s) prepared", f"Open {path}. Cover letters, answers and referral plans are ready.")
+        if dt.datetime.now().hour >= 7:
+            try:
+                today.morning_toast()
+            except Exception as ex:
+                log(f"today failed: {ex}")
         meta_set(c, "last_cycle", now())
         log(f"cycle done: packets={len(built)} fills={len(filled)} dashboard={path}")
     finally:
@@ -81,6 +87,15 @@ def cycle():
             os.remove(LOCK)
         except OSError:
             pass
+
+
+def usage():
+    c = db()
+    for label, q in (("today", "ts>=date('now','localtime')"), ("7 days", "ts>=date('now','-7 day')")):
+        rows = c.execute(f"SELECT kind, COUNT(*) n, SUM(inp+cache_create+cache_read) tin, SUM(outp) tout, SUM(cost) cost FROM llm_log WHERE {q} GROUP BY kind ORDER BY cost DESC").fetchall()
+        print(f"-- Claude usage, {label} (cost = list-price equivalent; your Pro plan is rate-limited, not billed per token)")
+        for r in rows:
+            print(f"   {r['kind']:12} calls={r['n']:3} in={r['tin']:>8} out={r['tout']:>7} ~${r['cost']:.3f}")
 
 
 def status():
@@ -132,7 +147,24 @@ def main():
     elif cmd == "fill":
         print(fill.fill_job(a[1]))
     elif cmd == "scout":
-        scout.run_scout()
+        scout.run_scout(force=True)
+    elif cmd == "today":
+        print(today.build(force="--force" in a)[0])
+    elif cmd == "usage":
+        usage()
+    elif cmd == "linkedin":
+        print(referrals.plan_referral(a[1]))
+    elif cmd == "yc-profile":
+        import yc_profile
+        print(yc_profile.run())
+    elif cmd == "watch":
+        c = db()
+        for r in c.execute("SELECT j.company,j.title,w.referral_state,w.deadline FROM watch w JOIN jobs j ON j.id=w.job_id").fetchall():
+            print(f"{r['company'][:24]:24} {r['title'][:56]:56} referral:{r['referral_state']:12} {r['deadline'] or ''}")
+    elif cmd == "enable-schedule":
+        print(subprocess.run(["schtasks", "/Change", "/TN", "JobAgentCycle", "/ENABLE"], capture_output=True, text=True).stdout)
+    elif cmd == "disable-schedule":
+        print(subprocess.run(["schtasks", "/Change", "/TN", "JobAgentCycle", "/DISABLE"], capture_output=True, text=True).stdout)
     elif cmd == "dashboard":
         print(dashboard.build())
     elif cmd == "status":

@@ -83,6 +83,7 @@ Projects (all real, measured): {projects}
 Experience: {experience}
 Achievements: {achievements}
 Resume variants available: {variants}
+Track priority (highest first): ML systems/inference/kernels > AI/ML engineer, data scientist, applied scientist > software engineering > AI/ML research > AI safety. Available from late Dec 2026/Jan 2027 for any role type; all work modes OK.
 Constraints: lives in India; prefers roles open to India-based candidates or remote-global; will relocate for strong opportunities (visa friction is real: US/UK/EU on-site is harder than India/Singapore/remote). Final-year undergrad (graduates Aug 2027), one internship, no publications, non-top-tier university. Wants lenient YOE bars: internships, new-grad, residencies, fellowships, and 'early-career friendly' roles in AI research/engineering, ML systems and inference, software engineering, and AI safety at strong employers.
 
 For each posting return a verdict:
@@ -101,7 +102,7 @@ POSTINGS
 def _fmt(r):
     return (f"id={r['id']}\ncompany={r['company']} (tier {r['tier']}, {r['category']})\ntitle={r['title']}\nlocation={r['location']}\n"
             f"url={r['url']}\nposted={r['posted']}\nheuristic_family={r['family']} early_career={bool(r['early'])} min_yoe_seen={r['yoe']}\n"
-            f"description_excerpt={(r['desc'] or '(none in feed; judge by title/company)')[:1800]}\n")
+            f"description_excerpt={(r['desc'] or '(none in feed; judge by title/company)')[:SETTINGS.get('triage_desc_chars', 900)]}\n")
 
 
 def triage(max_jobs=None):
@@ -121,7 +122,7 @@ def triage(max_jobs=None):
             experience=" | ".join(PROFILE["experience"]), achievements=" | ".join(PROFILE["achievements"]),
             variants=json.dumps(PROFILE["resume_variant_guidance"]), postings="\n---\n".join(_fmt(r) for r in batch))
         try:
-            text, _ = run_claude(prompt, model=SETTINGS["claude_model"], timeout=SETTINGS["triage_timeout_s"], max_turns=2)
+            text, _ = run_claude(prompt, kind="triage", model=SETTINGS["claude_model"], timeout=SETTINGS["triage_timeout_s"], max_turns=2)
             res = extract_json(text)
             budget_add(c, "triage_calls")
         except Exception as e:
@@ -140,5 +141,7 @@ def triage(max_jobs=None):
             c.execute("UPDATE jobs SET status=? WHERE id=?", ("triaged" if verdict != "SKIP" else "skipped", jid))
             done.append(jid)
         c.commit()
-    log(f"triage: {len(done)} of {len(rows)} judged")
+    import stakes
+    w = stakes.promote_triaged()
+    log(f"triage: {len(done)} of {len(rows)} judged; {w} moved to high-stakes watchlist")
     return done

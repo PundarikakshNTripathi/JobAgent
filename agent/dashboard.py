@@ -46,6 +46,7 @@ def build():
     c = db()
     sections = [
         ("READY TO SUBMIT (form filled, review and press Submit)", "j.status='ready'"),
+        ("HIGH-STAKES WATCHLIST: tracked, not applying yet (referral/relationship first)", "j.status='watch'"),
         ("Needs your help (partial / blocked fill)", "j.status LIKE 'fill-%'"),
         ("Packets prepared (cover letter, answers, resume chosen)", "j.status='packet'"),
         ("Looked good but ruled out by the packet (visa / level / eligibility)", "j.status='ineligible'"),
@@ -61,6 +62,11 @@ def build():
     for title, where in sections:
         rs = rows(c, where)
         out.append(f"<h2>{e(title)} ({len(rs)})</h2>" + ("".join(card(r) for r in rs) or '<div class=m>nothing here</div>'))
+    progs = c.execute("SELECT name, org, kind, window, eligibility, url FROM programs ORDER BY added DESC LIMIT 30").fetchall()
+    out.append(f"<h2>Pre-doc / residency / fellowship programs tracked ({len(progs)})</h2>" + "".join(
+        f'<div class="card"><b>{e(p["name"])}</b> <span class="t">{e(p["org"])} | {e(p["kind"])}</span><div class="m">window: {e(p["window"])} | eligible: {e(p["eligibility"])} | <a href="{e(p["url"])}">link</a></div></div>' for p in progs))
+    us = c.execute("SELECT COUNT(*) n, COALESCE(SUM(inp+cache_create+cache_read),0) tin, COALESCE(SUM(outp),0) tout FROM llm_log WHERE ts>=date('now','localtime')").fetchone()
+    out.append(f'<div class=m style="margin-top:18px">Claude today: {us["n"]} calls, {us["tin"]:,} input / {us["tout"]:,} output tokens. Daily plan: out/today.md</div>')
     out.append("<h2>Mark a job</h2><div class=m>python agent/run.py mark &lt;id&gt; applied|skip &nbsp;|&nbsp; python agent/run.py fill &lt;id&gt; &nbsp;|&nbsp; python agent/run.py referral &lt;id&gt;</div>")
     out.append("<h2>Check by hand (sites that block bots or have no API)</h2><ul>" + "".join(f'<li><a href="{e(u)}">{e(n)}</a></li>' for n, u in MANUAL) + "</ul>")
     path = os.path.join(OUT, "dashboard.html")

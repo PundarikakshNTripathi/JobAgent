@@ -1,7 +1,7 @@
 """Referral planning. Uses YOUR LinkedIn connections export (data/Connections.csv) -- no logged-in scraping of LinkedIn.
 Per target job: rank connections at that company, have Claude research the best ones on the public web, draft the outreach."""
 import csv, json, os, re
-from common import db, log, now, run_claude, extract_json, DATA, ROOT, SETTINGS, PROFILE, budget_add
+from common import db, log, now, run_claude, extract_json, DATA, ROOT, SETTINGS, PROFILE, budget_add, budget_used
 
 ALIASES = {"google deepmind": ["deepmind", "google deepmind", "google"], "meta": ["meta", "facebook", "meta ai"], "microsoft": ["microsoft", "microsoft research"],
            "nvidia": ["nvidia"], "amazon": ["amazon", "aws", "amazon web services"], "openai": ["openai"], "anthropic": ["anthropic"],
@@ -129,22 +129,34 @@ def plan_referral(job_id):
               "and BBDU Your City / Indian-undergrad alumni at the company if you can find any publicly.")
         tasks = ("1. Identify 2-3 specific real people (cite where you found them) who work on the relevant team/problem.\n"
                  "2. Rank them by approachability and relevance.\n3. Draft cold-outreach messages (connection note, DM, email if a public email exists).")
+    if SETTINGS.get("linkedin_browse", True) and budget_used(c, "linkedin") < SETTINGS.get("max_linkedin_per_day", 1):
+        try:
+            import linkedin
+            r = linkedin.scout_people(job, hits)
+            return _write(c, job, tri, pk, r, len(hits), "linkedin")
+        except Exception as e:
+            log(f"linkedin scout failed ({e}); falling back to public-web referral research")
     prompt = REF_PROMPT.format(summary=PROFILE["summary"], projects=" | ".join(PROFILE["projects"][:3]), site=PROFILE["website"], company=job["company"],
                                title=job["title"], location=job["location"], url=job["url"], reason=(tri["reason"] if tri else ""), contacts_block=cb, tasks=tasks)
-    text, _ = run_claude(prompt, allowed_tools="WebSearch,WebFetch", model=SETTINGS["claude_model_packets"], timeout=SETTINGS["packet_timeout_s"], max_turns=16)
+    text, _ = run_claude(prompt, kind="referral", allowed_tools="WebSearch,WebFetch", model=SETTINGS["claude_model_packets"], timeout=SETTINGS["packet_timeout_s"], max_turns=16)
     r = extract_json(text)
+    return _write(c, job, tri, pk, r, len(hits), "web")
+
+
+def _write(c, job, tri, pk, r, nhits, how):
     out = [f"# Referral plan: {job['company']} - {job['title']}", job["url"], "", "## Strategy", r.get("strategy", ""), "", "## Timing", r.get("timing", ""), "", "## Do first"]
     out += [f"- {x}" for x in r.get("before_you_message", [])]
     for i, t in enumerate(r.get("targets", []), 1):
-        out += ["", f"## Target {i}: {t.get('name')} ({t.get('role')})", f"Why: {t.get('why_them')}", f"Evidence: {t.get('evidence')}", f"Profile: {t.get('profile_url')}",
-                f"Reach via: {t.get('how_to_reach')}", "", "**Connection note**", t.get("connection_note", ""), "", "**DM**", t.get("dm", ""), "", "**Follow-up (+4-5 days)**",
-                t.get("followup", ""), "", "**Blurb they can forward**", t.get("blurb_for_referrer", "")]
+        out += ["", f"## Target {i}: {t.get('name')} ({t.get('role') or t.get('headline')})", f"Why: {t.get('why_them') or t.get('why_likely_to_respond')}", f"Evidence: {t.get('evidence')}", f"Profile: {t.get('profile_url')}",
+                f"Reach via: {t.get('how_to_reach') or ('LinkedIn (' + str(t.get('degree','')) + ' degree)')}", f"Likely to respond because: {t.get('why_likely_to_respond','')}", f"Mutual: {t.get('mutual','')}", "", "**Connection note**", t.get("connection_note", ""), "", "**DM**", t.get("dm", ""), "", "**Follow-up (+4-5 days)**",
+                t.get("followup", ""), "", "**If 2nd degree: ask a mutual connection to introduce you**", t.get("intro_ask_for_mutual", ""), "", "**Blurb they can forward**", t.get("blurb_for_referrer", "")]
     d = pk["dir"] if pk else os.path.join(DATA, "referrals")
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, "REFERRAL.md")
     open(path, "w", encoding="utf-8").write("\n".join(out))
-    c.execute("UPDATE packets SET referral_at=? WHERE job_id=?", (now(), job_id))
+    c.execute("UPDATE packets SET referral_at=? WHERE job_id=?", (now(), job["id"]))
+    c.execute("UPDATE watch SET referral_state='plan ready' WHERE job_id=?", (job["id"],))
     c.commit()
     budget_add(c, "referrals")
-    log(f"referral plan written: {path} ({len(hits)} matching connections)")
-    return path, len(hits)
+    log(f"referral plan written via {how}: {path} ({nhits} connections from export)")
+    return path, nhits

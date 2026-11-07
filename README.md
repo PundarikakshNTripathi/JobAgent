@@ -37,11 +37,31 @@ python agent/run.py install-schedule     # Windows Task Scheduler, every 30 min 
 
 Tune behaviour in `config/`: `settings.json` (caps, hours, notifications), `filters.json` (what counts as a target role), `companies.json` (watched boards), `profile.json` (facts the agent may use, hard rules, form defaults). Anything empty in `profile.json -> form_defaults` (salary, earliest start, pronouns) is never guessed; it is left blank and listed under "Needs you".
 
-## One thing you need to do for referrals: export your LinkedIn connections
+## Referrals: LinkedIn (read-only) + your export
 
-LinkedIn forbids automated browsing of logged-in sessions (risk: account restriction, which would hurt you most), so the agent does not scrape LinkedIn. You get the same result with LinkedIn's own export:
+You authorised browsing your own LinkedIn. `agent/linkedin.py` drives the agent Chrome (log in to LinkedIn once in that window; it keeps the session): searches your **1st-degree** connections at the target company, falls back to **2nd-degree** (mutual connections = intro path), opens at most 4 profiles, and ranks who is most likely to respond with ready-to-send notes, DMs, follow-ups and an intro-ask. **You send every message yourself.** Safeguards: an always-on page guard blocks Connect/Message/Follow/Like/Comment/Send/Endorse, at most 10 page loads per company with paced waits, 1 company per day (`max_linkedin_per_day`). This is automated use of a logged-in session, which LinkedIn's terms discourage: keep the caps low. Tested on Cerebras: it found two real 1st-degree connections and a ranked plan.
 
-LinkedIn -> Settings & Privacy -> Data privacy -> **Get a copy of your data** -> tick **Connections** -> request archive. When the email arrives (minutes to hours), drop the zip (or its `Connections.csv`) anywhere in `data/` or `data/linkedin/`; date-versioned names are fine and the newest file wins. From then on every referral plan starts with the people you already know at that company, ranked by relevance, researched on the public web, with messages written. Without the file it falls back to finding warm paths on the public web (team members, paper authors, maintainers), as in the Together AI example.
+If you also drop LinkedIn's data export (zip or `Connections.csv`, any date-versioned name) in `data/` or `data/linkedin/`, the newest one is used to prioritise people first.
+
+## High-stakes watchlist (never auto-applied)
+
+Frontier-lab fellowships/residencies, pre-docs (DeepMind, FAIR, MSR, neolabs, academic institutes, research orgs) and AI-safety programs go to a **watchlist**: tracked, a draft packet is prepared (never filled), the referral plan is created first, deadlines are surfaced, and `out/today.md` gives daily tasks to improve your odds. You decide when to apply. Configure in `settings.json -> high_stakes`. The scout (every 3 days) finds programs: `python agent/run.py watch`.
+
+## Daily plan
+
+`python agent/run.py today` writes `out/today.md` (and a morning toast): improvement tasks sized to your 5 h/day, outreach nudges, forms waiting for you, watchlist, programs. One Haiku call per day.
+
+## Token economy (Claude Pro)
+
+- Headless calls run in **lean mode** (no user MCP servers/skills/default system prompt): ~0.7k input tokens instead of ~27k per call.
+- Haiku for triage and the daily plan, Sonnet only for packets, scouting, referrals, form filling.
+- Polling and filtering cost no tokens. Daily caps in `settings.json`: 3 triage calls, 2 packets, 1 referral, 1 LinkedIn company, 2 form fills, scout every 3 days.
+- `python agent/run.py usage` shows tokens per kind. Browser steps (form fill, LinkedIn, YC) are the expensive ones (hundreds of thousands of cached input tokens per run): keep `max_fills_per_day` low or fill on demand with `run.py fill <id>`.
+- The scheduler task is **disabled** for now: `run.py enable-schedule` / `disable-schedule`.
+
+## YC Work at a Startup
+
+`python agent/run.py yc-profile` rewrites your profile from `config/profile.json` facts only (before/after in `out/yc_profile_before_after.md`). It never touches privacy, visibility or account settings.
 
 ## Phone notifications (optional)
 

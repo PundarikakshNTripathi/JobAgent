@@ -118,6 +118,18 @@ def ensure_chrome():
     raise RuntimeError("Chrome debug port did not open")
 
 
+SUBMITTED_HINT = ("confirmation", "thank-you", "thankyou", "submitted", "application-complete", "/success")
+
+
+def submission_watchdog():
+    """Return (title,url) of any agent-browser tab that looks like a post-submission page. Run after every fill."""
+    try:
+        tabs = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json", timeout=10).read())
+    except Exception:
+        return []
+    return [(t.get("title", ""), t.get("url", "")) for t in tabs if t.get("type") == "page" and any(h in t.get("url", "").lower() for h in SUBMITTED_HINT)]
+
+
 def fill_job(job_id):
     c = db()
     job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
@@ -140,8 +152,8 @@ def fill_job(job_id):
                                 answers=json.dumps(data.get("answers", {}), indent=1), formq=json.dumps(data.get("form_questions", []), indent=1))
     log(f"filling {job['company']} | {job['title']} ...")
     timeout = min(SETTINGS["fill_timeout_s"], SETTINGS["guard_minutes"] * 60 - 60)
-    text, _ = run_claude(prompt, allowed_tools="mcp__fillbrowser", model=SETTINGS["claude_model_packets"], timeout=timeout, max_turns=70,
-                         extra_args=["--mcp-config", mcp_path, "--strict-mcp-config"])
+    text, _ = run_claude(prompt, kind="fill", allowed_tools="mcp__fillbrowser", model=SETTINGS.get("claude_model_fill", "sonnet"), timeout=timeout, max_turns=70,
+                         mcp_config=mcp_path, persist=True)
     try:
         rep = extract_json(text)
     except Exception:
@@ -154,6 +166,10 @@ def fill_job(job_id):
     with open(os.path.join(pk["dir"], "FILL_REPORT.md"), "w", encoding="utf-8") as f:
         f.write(f"# Fill report ({now()})\nstatus: **{status}**\n\nfilled: {rep.get('filled')}\n\nneeds you:\n" + "\n".join(f"- {x}" for x in rep.get("needs_user", [])) +
                 f"\n\nblocker: {rep.get('blocker','')}\n\nfinal button NOT pressed: {rep.get('submit_button_label','')}\nlast page: {rep.get('page_url','')}\n")
+    sub_tabs = submission_watchdog()
+    if sub_tabs:
+        notify("CHECK: a confirmation page is open", "; ".join(f"{t[:40]} {u[:60]}" for t, u in sub_tabs)[:300] + " (agent never submits; verify it was you)")
+        rep.setdefault("needs_user", []).append(f"Browser has post-submission pages open: {sub_tabs}")
     if status == "READY_TO_SUBMIT":
         notify(f"READY - hit Submit: {job['company']}", f"{job['title']}. Form filled in the JobAgent Chrome window (tab left open). Review, then submit. Needs you: {len(rep.get('needs_user', []))} field(s).")
     else:

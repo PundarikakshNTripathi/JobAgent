@@ -103,7 +103,7 @@ def build_packet(job_id):
                                   company=job["company"], title=job["title"], location=job["location"], url=job["url"], ats=job["ats"],
                                   desc=(job["desc"] or "")[:3500], triage=triage_note, questions_block=qb,
                                   variants=json.dumps(PROFILE["resume_variant_guidance"]))
-    text, _ = run_claude(prompt, allowed_tools="WebFetch,WebSearch", model=SETTINGS["claude_model_packets"],
+    text, _ = run_claude(prompt, kind="packet", allowed_tools="WebFetch,WebSearch", model=SETTINGS["claude_model_packets"],
                          timeout=SETTINGS["packet_timeout_s"], max_turns=14)
     p = extract_json(text)
     if p.get("resume") not in PROFILE["resume_variants"]:
@@ -131,7 +131,8 @@ def build_packet(job_id):
     md += ["", "## Needs you"] + ([f"- {x}" for x in p.get("needs_user", [])] or ["- nothing flagged"])
     open(os.path.join(d, "README.md"), "w", encoding="utf-8").write("\n".join(md))
     c.execute("INSERT OR REPLACE INTO packets(job_id,dir,at) VALUES(?,?,?)", (job_id, d, now()))
-    c.execute("UPDATE jobs SET status=? WHERE id=?", ("ineligible" if p.get("eligibility") == "blocked" else "packet", job_id))
+    cur = job["status"]
+    c.execute("UPDATE jobs SET status=? WHERE id=?", ("ineligible" if p.get("eligibility") == "blocked" else (cur if cur == "watch" else "packet"), job_id))
     c.commit()
     budget_add(c, "packets")
     log(f"packet ready: {job['company']} | {job['title']} -> {d}")
@@ -159,3 +160,19 @@ def run_packets():
         except Exception as e:
             log(f"packet failed for {r['id']}: {e}")
     return built
+
+
+def run_watch_drafts(limit=1):
+    """Prepare (never fill) a draft packet for the top watchlist item that has none."""
+    c = db()
+    if budget_used(c, "packets") >= SETTINGS["max_packets_per_day"]:
+        return []
+    out = []
+    for r in c.execute("""SELECT w.job_id FROM watch w JOIN jobs j ON j.id=w.job_id LEFT JOIN triage t ON t.job_id=w.job_id
+                          WHERE NOT EXISTS (SELECT 1 FROM packets p WHERE p.job_id=w.job_id) AND j.status='watch'
+                          ORDER BY COALESCE(t.fit,0) DESC LIMIT ?""", (limit,)).fetchall():
+        try:
+            out.append(build_packet(r["job_id"]))
+        except Exception as e:
+            log(f"watch draft failed {r['job_id']}: {e}")
+    return out
