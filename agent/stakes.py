@@ -11,7 +11,7 @@ def is_high_stakes(job):
     title = (job["title"] or "").lower()
     if re.search("|".join(HS.get("title_regex", ["^$"])), title) and (job["tier"] in ("S", "A") or job["category"] in HS.get("categories", [])):
         return "program/research role at a top-tier organisation"
-    if job["company"] in HS.get("extra_companies", []) and job["tier"] == "S":
+    if job["company"] in HS.get("extra_companies", []) and job["tier"] == "S" and job["early"]:
         return "top-tier lab; referral strongly advised before applying"
     return ""
 
