@@ -7,6 +7,7 @@
   referral <id>       research connections + draft outreach for a job
   fill <id>           fill the application in the agent Chrome (never submits)
   today [--force]     build out/today.md (improvement tasks, outreach, watchlist) + usage   usage   Claude token usage
+  gui [--no-open]     local web GUI at http://127.0.0.1:8777
   watch | linkedin <id> | yc-profile | enable-schedule | disable-schedule
   scout               Claude web scout (X, blocked career pages, safety boards, new companies)
   status | dashboard  summary / regenerate out/dashboard.html
@@ -148,6 +149,9 @@ def main():
         print(fill.fill_job(a[1]))
     elif cmd == "scout":
         scout.run_scout(force=True)
+    elif cmd == "gui":
+        import gui
+        gui.serve(open_browser="--no-open" not in a)
     elif cmd == "today":
         print(today.build(force="--force" in a)[0])
     elif cmd == "usage":

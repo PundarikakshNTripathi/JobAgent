@@ -142,7 +142,7 @@ def build_packet(job_id):
 def pending_for_packets(limit):
     c = db()
     return c.execute("""SELECT j.id FROM jobs j JOIN triage t ON t.job_id=j.id
-                        WHERE j.active=1 AND t.verdict IN ('APPLY','STRETCH') AND t.fit>=55
+                        WHERE j.active=1 AND t.verdict IN ('APPLY','STRETCH') AND t.fit>=45
                           AND NOT EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)
                           AND j.status NOT IN ('applied','skipped','dismissed')
                         ORDER BY (t.verdict='APPLY') DESC, t.fit DESC LIMIT ?""", (limit,)).fetchall()

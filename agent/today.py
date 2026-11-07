@@ -14,7 +14,7 @@ Return ONLY JSON:
 {{"tasks":[{{"title":"concrete, 1 line, verb first","minutes":int,"why":"which gaps/roles it unlocks","proof":"what artifact to produce (repo commit, write-up, benchmark table, PR)"}}],
 "outreach":[{{"who_or_where":"role/company to approach","action":"specific low-friction action (e.g. read X, comment on Y, ask Z one question)"}}],
 "thought":"one sentence of strategic advice"}}
-Rules: 3-5 tasks whose minutes sum to AT MOST {minutes} (hard limit); at least one task producing public proof (benchmark, write-up, PR to vLLM/SGLang/Triton/llama.cpp or similar) tied to the top track; at most 2 outreach items; no generic advice; do not suggest anything that needs credentials you don't have."""
+Rules: 4-6 tasks whose minutes sum to AT MOST {minutes} (hard limit); operate like an ambitious researcher-engineer who needs an offer ASAP: ship public proof every day, apply widely to normal-stakes roles, and work referral relationships for the high-stakes ones; at least one task producing public proof (benchmark, write-up, PR to vLLM/SGLang/Triton/llama.cpp or similar) tied to the top track; 3-5 outreach items (people to message today, communities, maintainers, programs to ask about); no generic advice; do not suggest anything that needs credentials you don't have."""
 
 
 def gaps_counter(c):
