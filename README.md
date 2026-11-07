@@ -30,7 +30,7 @@ Always-on: `python agent\run.py install-schedule` creates the Windows task `JobA
 
 | # | Step | Claude? | What happens |
 |---|---|---|---|
-| 1 | **Poll** | no | ~150 company boards on public ATS feeds (Greenhouse, Lever, Ashby, SmartRecruiters, Workable) plus **official career sites** of big companies: Microsoft, NVIDIA, Qualcomm, Micron, Netflix (Eightfold), Atlassian, Amazon (India, Singapore, UK, Germany, Canada, US), and Workday tenants (NVIDIA, Intel, Salesforce, Adobe, Micron, Cisco, HP, Capital One, Mastercard, Broadcom/VMware, Samsung, PayPal, Workday, Zoom, Cadence). Also YC role pages, Hacker News (jobs + Who is hiring), VC portfolio boards (Getro), SimplifyJobs + speedyapply GitHub lists, Remotive, RemoteOK. About 25k postings per poll; duplicates across sources are removed. Google, Apple, Meta, Uber and Oracle publish no usable feed: the daily web scout covers them and the dashboard lists their search links. |
+| 1 | **Poll** | no | ~150 company boards on public ATS feeds (Greenhouse, Lever, Ashby, SmartRecruiters, Workable) plus **official career sites** of big companies: Google, Microsoft, NVIDIA, Qualcomm, Micron, Netflix (Eightfold), Atlassian, Amazon (India, Singapore, UK, Germany, Canada, US), and Workday tenants (NVIDIA, Intel, Salesforce, Adobe, Micron, Cisco, HP, Capital One, Mastercard, Broadcom/VMware, Samsung, PayPal, Workday, Zoom, Cadence). Also YC role pages, Hacker News (jobs + Who is hiring), VC portfolio boards (Getro), SimplifyJobs + speedyapply GitHub lists, Remotive, RemoteOK. About 25k postings per poll; duplicates across sources are removed. **Google Careers** is parsed from the data embedded in its results page (India, Singapore, UK, Switzerland, Germany, Canada, US; intern + early-career levels). Apple, Meta, Uber and Oracle publish no usable feed: the daily web scout covers them and the dashboard lists their search links. |
 | 2 | **Filter + score** | no | `config/filters.json`: title family (ML systems, ML/AI engineer, data science, SWE, low-level, research, safety), drops senior / PhD-only / non-engineering titles, reads required years of experience, early-career markers, location (India / remote / relocate) and visa-sponsorship signals. Track priority weights your order: MLSys > AI/ML eng, DS, applied > SWE > research > safety. |
 | 3 | **Instant alert** | no | A brand-new posting scoring at least `instant_alert_score` triggers a desktop toast immediately. |
 | 4 | **Watchlist** | no | Prestige roles (frontier-lab fellowships/residencies, pre-docs, safety programs) move to the high-stakes watchlist (section 6). |
@@ -214,3 +214,19 @@ research/   TARGET_COMPANIES.md and the probes used to discover job-board feeds
 - X/Twitter has no free API and scraping it is against its terms: it is covered by the daily web scout plus a saved X search link on the dashboard.
 - Cover letters are drafts: skim each once. The honesty rules in `profile.json -> hard_rules` (no overclaiming TernixEngine, Amazon placement or Aegis scope; CGPA and backlog stated truthfully) are enforced in the prompts, not by code.
 - Salary, start-date details beyond the profile, AI-tool-use disclosures and legal attestations that are not in the profile are always left for you.
+
+---
+
+## 13. Where you can realistically get hired (read before mass-applying)
+
+You are an Indian citizen authorised to work in India only. What that means in practice (researched Nov 2026; verify specifics per posting):
+
+| Route | Reality |
+|---|---|
+| **India offices / remote-from-India** (Google Bengaluru/Hyderabad, Microsoft, Amazon, NVIDIA, Qualcomm, Atlassian, YC and neolab remote roles) | The easy path: no visa needed. Apply widely. |
+| **US internships** | CPT is tied to enrolment at a US school, so it does not apply to you. The only route is an employer-sponsored J-1 intern (through a designated sponsor) and big tech rarely recruits India-campus students into it. Low odds; worth an application only with a referral or when the posting mentions sponsorship / international students. |
+| **US full-time** | Needs H-1B (lottery, wage-weighted selection since 2026; a $100k new-petition fee was struck down in court but DHS proposed a ~$103k fee rule in Aug 2026, status in flux). Large companies sponsor routinely; startups below Series A often cannot. Best path is usually to start in an India/Singapore/UK/Canada office and transfer, or O-1 later with strong proof of work. |
+| **UK / Canada / Singapore / Germany / Switzerland** | Employer-sponsored work permits are normal for new grads at larger firms (Google Zurich/Singapore, Amazon, Microsoft). Internships there still usually need student status or a sponsored visa. Worth applying when the posting offers relocation or visa support. |
+| **China** | Not realistic for an Indian citizen without a local work permit; the agent now drops these (e.g. NVIDIA Shanghai). |
+
+Big tech vs startups / neolabs: big tech runs campus pipelines with online assessments and has visa machinery, but a non-local intern pool is tiny; startups and neolabs decide fast on proof of work and referrals (your strength) and can hire you remotely as a contractor in India, but many cannot sponsor visas. Frontier labs sponsor full-time hires but their fellowships often require existing work authorisation (Anthropic Fellows does). So: apply broadly to India/remote roles, apply to relocation roles when sponsorship is stated or a referral exists, treat US on-site internships as long shots, and ignore roles that require local work authorisation you do not have. The scorer penalises no-sponsorship signals (-25), US/Canada/UK on-site internships without a sponsorship signal (-10) and drops China; the triage prompt carries the same rules.

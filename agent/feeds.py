@@ -179,7 +179,7 @@ def fetch_all():
     import sources_big as _B
     extra = [(w["name"], (lambda w=w: workday(w))) for w in WORKDAY]
     extra += [(f"{e[0]} (careers site)", (lambda e=e: _B.eightfold(*e))) for e in _B.EIGHTFOLD]
-    extra += [("Atlassian", _B.atlassian), ("Hugging Face", lambda: _B.workable("Hugging Face", "huggingface"))]
+    extra += [("Google (careers site)", _B.google_careers), ("Atlassian", _B.atlassian), ("Hugging Face", lambda: _B.workable("Hugging Face", "huggingface"))]
     extra += [("Amazon", amazon),
              ("simplify-intern", lambda: github_list("https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json", "simplify-intern"))]
     if SETTINGS.get("include_new_grad_list"):
@@ -191,7 +191,7 @@ def fetch_all():
     wd_meta = {w["name"]: (w["tier"], w["category"]) for w in WORKDAY}
     wd_meta["Amazon"] = ("A", "bigco")
     wd_meta.update({e[0]: (e[1], "bigco") for e in _B.EIGHTFOLD})
-    wd_meta.update({"Atlassian": ("B", "bigco"), "Hugging Face": ("A", "neolab")})
+    wd_meta.update({"Google": ("S", "bigco"), "Atlassian": ("B", "bigco"), "Hugging Face": ("A", "neolab")})
     for name, fn in extra:
         try:
             js = fn()

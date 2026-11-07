@@ -90,6 +90,12 @@ def score(job):
     else:
         s -= 6  # unknown seniority, not marked early-career
     r["visa"] = visa_status(desc + " " + job["location"])
+    loc_l = job["location"].lower()
+    if r["loc_class"] == "relocate" and any(w in loc_l for w in F.get("drop_locations", [])) and not any(w in loc_l for w in F["india_locations"]):
+        r["drop"] = "location not realistic (needs local work permit)"
+        return r
+    if r["loc_class"] == "relocate" and r["visa"] != "yes" and re.search(r"\bintern|co-?op|apprentice", title) and re.search(r"\b(usa|united states|canada|united kingdom|uk)\b|, (ca|ny|wa|tx|ma)\b", loc_l + " "):
+        s -= 10  # in-country enrolment / right-to-work is usually required for these internships
     s += TIER_BOOST.get(job.get("_tier", "C"), 0)
     if r["loc_class"] == "relocate":
         s += {"no": -25, "yes": 5, "unknown": 0}[r["visa"]]

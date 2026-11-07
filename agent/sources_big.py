@@ -66,3 +66,48 @@ def workable(name, slug):
                     "location": ", ".join(x for x in (loc.get("city"), loc.get("country")) if x) + (" | Remote" if j.get("remote") else ""),
                     "url": f"https://apply.workable.com/{slug}/j/{j['shortcode']}/", "ats": "workable", "posted": (j.get("published") or "")[:10], "desc": ""})
     return out
+
+
+# ------------------------------------------------------------------ Google Careers (data embedded in the results page)
+GOOGLE_QUERIES = {"India": ["machine learning", "software engineer", "research", "systems infrastructure"],
+                  "Singapore": ["machine learning"], "United Kingdom": ["machine learning"], "Switzerland": ["machine learning"], "Germany": ["machine learning"],
+                  "Canada": ["machine learning"], "United States": ["machine learning intern"]}
+GOOGLE_LEVELS = ["INTERN_AND_APPRENTICE", "EARLY"]
+
+
+def google_careers():
+    import json as _json, re as _re, urllib.parse as _up
+    from common import http_get
+    out, seen = [], set()
+    for loc, qs in GOOGLE_QUERIES.items():
+        for q in qs:
+            for lvl in GOOGLE_LEVELS:
+                for page in (1, 2):
+                    url = f"https://www.google.com/about/careers/applications/jobs/results/?q={_up.quote(q)}&location={_up.quote(loc)}&target_level={lvl}&page={page}"
+                    try:
+                        h = http_get(url, timeout=40, headers={"Accept-Language": "en", "Accept": "text/html"})
+                    except Exception:
+                        break
+                    m = _re.search(r"AF_initDataCallback\(\{key: 'ds:1'.*?data:(.*?), sideChannel", h, _re.S)
+                    if not m:
+                        break
+                    try:
+                        d = _json.loads(m.group(1))
+                    except ValueError:
+                        break
+                    jobs = d[0] or []
+                    for j in jobs:
+                        jid = str(j[0])
+                        if jid in seen:
+                            continue
+                        seen.add(jid)
+                        locs = [x[0] for x in (j[9] or []) if x]
+                        slug = _re.sub(r"[^a-z0-9]+", "-", (j[1] or "").lower()).strip("-")
+                        dates = _text((j[15] or [None, ""])[1], 200) if len(j) > 15 and j[15] else ""
+                        out.append({"id": f"google:{jid}", "company": "Google", "title": j[1], "location": " | ".join(locs)[:200],
+                                    "url": f"https://www.google.com/about/careers/applications/jobs/results/{jid}-{slug}", "ats": "google",
+                                    "posted": dt.datetime.fromtimestamp(j[12][0]).date().isoformat() if len(j) > 12 and j[12] else "",
+                                    "desc": dates + " " + _text((j[3] or [None, ""])[1], 1200) + " " + _text((j[4] or [None, ""])[1], 1800)})
+                    if len(jobs) < (d[3] or 20):
+                        break
+    return out

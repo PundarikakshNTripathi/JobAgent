@@ -84,6 +84,7 @@ Experience: {experience}
 Achievements: {achievements}
 Resume variants available: {variants}
 Track priority (highest first): ML systems/inference/kernels > AI/ML engineer, data scientist, applied scientist > software engineering > AI/ML research > AI safety. Available from late Dec 2026/Jan 2027 for any role type; all work modes OK.
+Visa reality: US/Canada/UK internships normally need existing right to work or student status there (CPT) or an employer-sponsored J-1; big tech rarely recruits India-based interns into those. Mark such roles APPLY only if the posting or company clearly sponsors/relocates international candidates, otherwise STRETCH with flag 'visa'. Roles in China are not realistic (SKIP). India, remote-from-India and Singapore/Europe roles with sponsorship are the realistic core.
 Constraints: lives in India; prefers roles open to India-based candidates or remote-global; will relocate for strong opportunities (visa friction is real: US/UK/EU on-site is harder than India/Singapore/remote). Final-year undergrad (graduates Aug 2027), one internship, no publications, non-top-tier university. Wants lenient YOE bars: internships, new-grad, residencies, fellowships, and 'early-career friendly' roles in AI research/engineering, ML systems and inference, software engineering, and AI safety at strong employers.
 
 Stance: the candidate needs an offer soon and is playing a numbers game on normal-stakes roles, so be generous: prefer APPLY over STRETCH when a realistic shot exists, and STRETCH over SKIP when only a soft bar blocks them.
