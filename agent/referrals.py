@@ -15,12 +15,33 @@ def norm(s):
     return re.sub(r"\s+", " ", NOISE.sub(" ", (s or "").lower())).strip()
 
 
+def _find_export():
+    """Newest LinkedIn export in data/: Connections*.csv, any *.csv under data/linkedin/, or a LinkedIn archive .zip (any date-versioned name)."""
+    import glob, zipfile, io
+    cands = glob.glob(os.path.join(DATA, "Connections*.csv")) + glob.glob(os.path.join(DATA, "linkedin", "**", "*.csv"), recursive=True) +         glob.glob(os.path.join(DATA, "*.zip")) + glob.glob(os.path.join(DATA, "linkedin", "**", "*.zip"), recursive=True)
+    cands = [c for c in cands if os.path.getsize(c) > 0]
+    best = []
+    for c in sorted(cands, key=os.path.getmtime, reverse=True):
+        if c.lower().endswith(".zip"):
+            try:
+                z = zipfile.ZipFile(c)
+                name = next((n for n in z.namelist() if n.lower().endswith("connections.csv")), None)
+                if name:
+                    return z.read(name).decode("utf-8-sig"), c
+            except zipfile.BadZipFile:
+                continue
+        else:
+            txt = open(c, encoding="utf-8-sig", newline="").read()
+            if "first name" in txt.lower()[:2000]:
+                return txt, c
+    return None, None
+
+
 def load_connections():
-    path = os.path.join(ROOT, SETTINGS.get("linkedin_connections_csv", "data/Connections.csv"))
-    if not os.path.exists(path):
+    txt, src = _find_export()
+    if not txt:
         return []
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        lines = f.read().splitlines()
+    lines = txt.splitlines()
     start = next((i for i, l in enumerate(lines) if l.lower().startswith("first name")), 0)
     rows = list(csv.DictReader(lines[start:]))
     out = []
@@ -103,7 +124,7 @@ def plan_referral(job_id):
                  "2. Pick the best 1-2 to approach (relevant team, approachable seniority) plus a recruiter/university-recruiting route if listed; explain why.\n"
                  "3. Draft the messages. These are existing connections, so a DM (not a connection request) fits; acknowledge the connection is dormant honestly and briefly.")
     else:
-        cb = ("NO EXISTING CONNECTIONS FOUND" + (" (connections file is present but nothing matched this company)" if conns else " (no data/Connections.csv exported yet)") +
+        cb = ("NO EXISTING CONNECTIONS FOUND" + (" (connections file is present but nothing matched this company)" if conns else " (no LinkedIn export found in data/ yet)") +
               ". Find warm paths on the public web instead: the hiring manager or team named in the posting, authors of the team's recent papers/blog posts, open-source maintainers of the relevant repo, "
               "and BBDU Your City / Indian-undergrad alumni at the company if you can find any publicly.")
         tasks = ("1. Identify 2-3 specific real people (cite where you found them) who work on the relevant team/problem.\n"

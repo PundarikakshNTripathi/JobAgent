@@ -41,7 +41,7 @@ Tune behaviour in `config/`: `settings.json` (caps, hours, notifications), `filt
 
 LinkedIn forbids automated browsing of logged-in sessions (risk: account restriction, which would hurt you most), so the agent does not scrape LinkedIn. You get the same result with LinkedIn's own export:
 
-LinkedIn -> Settings & Privacy -> Data privacy -> **Get a copy of your data** -> tick **Connections** -> request archive. When the email arrives (minutes to hours), save `Connections.csv` as `data/Connections.csv`. From then on every referral plan starts with the people you already know at that company, ranked by relevance, researched on the public web, with messages written. Without the file it falls back to finding warm paths on the public web (team members, paper authors, maintainers), as in the Together AI example.
+LinkedIn -> Settings & Privacy -> Data privacy -> **Get a copy of your data** -> tick **Connections** -> request archive. When the email arrives (minutes to hours), drop the zip (or its `Connections.csv`) anywhere in `data/` or `data/linkedin/`; date-versioned names are fine and the newest file wins. From then on every referral plan starts with the people you already know at that company, ranked by relevance, researched on the public web, with messages written. Without the file it falls back to finding warm paths on the public web (team members, paper authors, maintainers), as in the Together AI example.
 
 ## Phone notifications (optional)
 

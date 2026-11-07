@@ -65,6 +65,7 @@ ABSOLUTE RULES
 - Do not create accounts, set passwords, solve CAPTCHAs, or complete email/phone verification. If the form requires any of that before it can be filled, stop and report BLOCKED with the URL and exact reason.
 - Only enter facts that appear below. Never invent. Legal attestations and eligibility declarations (export-control/citizenship statements, "I certify", background-check consent, prior-employer or relative disclosures, AI-policy acknowledgements, "do you meet the requirements") must NOT be inferred or ticked by you: leave them unanswered and list them in needs_user, unless the exact answer is literally stated in the candidate data (work authorization in India = yes; needs sponsorship outside India = yes). If a required field needs information not given (salary, exact dates, EEO/demographics other than 'decline', AI-tool-use disclosure, references, etc.), leave it blank and list it in needs_user. For EEO/demographic/veteran/disability questions choose the decline-to-answer option.
 - Open the application in a NEW tab (browser_tabs action=new) so earlier tabs stay open. Leave this tab open at the end.
+- Dropdown/autocomplete tips: for a School/University list that lacks the candidate's school, choose "Other"/"Not listed" if offered, else leave blank and report. For location autocompletes, type only the city ("Your City"), wait for suggestions, then CLICK the matching suggestion (do not just press Enter); re-snapshot to confirm the field committed. Education start year is in the candidate data; if a month is required and unknown, leave it and report.
 - Stay efficient: use browser_snapshot, browser_fill_form, browser_type, browser_select_option, browser_click, browser_file_upload. Budget about 40 tool calls. Re-snapshot at the end and verify required fields are filled and nothing shows a validation error.
 
 JOB: {company} - {title}
@@ -76,6 +77,7 @@ CANDIDATE DATA
 
 FILES TO UPLOAD (use browser_file_upload with these exact absolute paths)
 - Resume (PDF): {resume}
+- Transcript (PDF, upload ONLY if a transcript/academic-record upload is requested): {transcript}
 - Cover letter (PDF, upload only if there is a cover letter upload field; otherwise paste the text): {cover_pdf}
 
 COVER LETTER TEXT
@@ -132,9 +134,9 @@ def fill_job(job_id):
     mcp_path = os.path.join(DATA, "mcp-fill.json")
     json.dump(mcp, open(mcp_path, "w"), indent=1)
     prof = {k: PROFILE[k] for k in ("name", "first_name", "last_name", "email", "phone", "location", "linkedin", "github", "org_github", "website", "twitter", "education",
-                                    "graduation", "summary", "experience", "projects", "achievements", "skills_defensible", "form_defaults")}
+                                    "graduation", "education_start_year", "education_notes", "summary", "experience", "projects", "achievements", "skills_defensible", "form_defaults")}
     prompt = FILL_PROMPT.format(company=job["company"], title=job["title"], url=job["url"], profile=json.dumps(prof, indent=1),
-                                resume=data.get("resume_path", ""), cover_pdf=data.get("cover_pdf") or "(none generated; paste text)", cover=data.get("cover_letter", ""),
+                                resume=data.get("resume_path", ""), transcript=PROFILE.get("transcript_pdf", "(none)"), cover_pdf=data.get("cover_pdf") or "(none generated; paste text)", cover=data.get("cover_letter", ""),
                                 answers=json.dumps(data.get("answers", {}), indent=1), formq=json.dumps(data.get("form_questions", []), indent=1))
     log(f"filling {job['company']} | {job['title']} ...")
     timeout = min(SETTINGS["fill_timeout_s"], SETTINGS["guard_minutes"] * 60 - 60)
