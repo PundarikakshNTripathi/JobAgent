@@ -30,7 +30,7 @@ Always-on: `python agent\run.py install-schedule` creates the Windows task `JobA
 
 | # | Step | Claude? | What happens |
 |---|---|---|---|
-| 1 | **Poll** | no | ~100 company boards (Greenhouse, Lever, Ashby, SmartRecruiters), Workday (NVIDIA, Intel, Salesforce, Adobe), Amazon India, YC role pages, Hacker News (jobs + monthly Who is hiring), VC portfolio boards (Getro), SimplifyJobs + speedyapply GitHub lists, Remotive, RemoteOK. About 21k postings per poll; the same posting from several sources is de-duplicated. |
+| 1 | **Poll** | no | ~150 company boards on public ATS feeds (Greenhouse, Lever, Ashby, SmartRecruiters, Workable) plus **official career sites** of big companies: Microsoft, NVIDIA, Qualcomm, Micron, Netflix (Eightfold), Atlassian, Amazon (India, Singapore, UK, Germany, Canada, US), and Workday tenants (NVIDIA, Intel, Salesforce, Adobe, Micron, Cisco, HP, Capital One, Mastercard, Broadcom/VMware, Samsung, PayPal, Workday, Zoom, Cadence). Also YC role pages, Hacker News (jobs + Who is hiring), VC portfolio boards (Getro), SimplifyJobs + speedyapply GitHub lists, Remotive, RemoteOK. About 25k postings per poll; duplicates across sources are removed. Google, Apple, Meta, Uber and Oracle publish no usable feed: the daily web scout covers them and the dashboard lists their search links. |
 | 2 | **Filter + score** | no | `config/filters.json`: title family (ML systems, ML/AI engineer, data science, SWE, low-level, research, safety), drops senior / PhD-only / non-engineering titles, reads required years of experience, early-career markers, location (India / remote / relocate) and visa-sponsorship signals. Track priority weights your order: MLSys > AI/ML eng, DS, applied > SWE > research > safety. |
 | 3 | **Instant alert** | no | A brand-new posting scoring at least `instant_alert_score` triggers a desktop toast immediately. |
 | 4 | **Watchlist** | no | Prestige roles (frontier-lab fellowships/residencies, pre-docs, safety programs) move to the high-stakes watchlist (section 6). |
@@ -47,23 +47,32 @@ Operating stance: a **numbers game on normal-stakes roles** (apply broadly, fast
 
 ## 3. The GUI
 
-`python agent\run.py gui` (or `start_gui.bat`) opens `http://127.0.0.1:8777`. It listens on localhost only; every state-changing request needs a custom header and only whitelisted commands can run.
+`python agent\run.py gui` (or double-click `start_gui.bat`) opens `http://127.0.0.1:8777`. It listens on localhost only; every state-changing request needs a custom header and only whitelisted commands can run. Light and dark themes (More > Toggle light / dark), mobile-friendly, keyboard: `/` focuses search, `Esc` closes the detail panel.
 
-- **Top bar:** `Run full cycle`, `Poll`, `Triage`, `Scout`, `Today plan`, `Rebuild` (dashboard). The status text shows the last poll, active postings, today's Claude calls (`t` triage, `p` packets, `r` referrals, `f` fills) and what is running.
-- **Tabs** (counts in brackets):
-  - **Ready to submit**: forms filled; review the tab in the JobAgent Chrome and press Submit yourself.
-  - **Needs you**: partial/blocked fills; open the packet's `FILL_REPORT.md` to see exactly which fields are waiting.
-  - **Watchlist**: prestige roles tracked, not applied to.
-  - **Packets**: prepared applications not yet filled.
-  - **Triaged (APPLY/STRETCH)**: good matches waiting for a packet.
-  - **New strong**: new postings with a high heuristic score, not triaged yet.
-  - **Applied**: what you marked as applied.
-  - **Programs**: pre-docs, residencies, fellowships with windows and eligibility.
-- **Filter box:** matches company, title and location.
-- **Per-job buttons:** `Packet` (build or refresh the application packet), `Referral plan (LinkedIn)`, `Fill form`, `Open packet folder` (Explorer), `Applied`, `Skip`. A click runs in the background; progress shows in the Activity log and the status line.
-- **Today's plan** and **Activity log** panels refresh automatically.
+**Layout.** A sidebar with live counts, a search bar, `Run full cycle`, and a `More` menu (Poll, Triage, Web scout, Rebuild today's plan, Rebuild dashboard, Refresh YC profile, theme).
 
-Typical GUI flow: read Today's plan, review **Ready to submit** and submit, skim **Triaged** and **New strong** and press `Packet` or `Fill form` on the ones you like, work the referral plans in **Watchlist**, mark what you applied to.
+**Views (sidebar)**
+
+| View | What you see |
+|---|---|
+| **Today** (landing) | Greeting, headline numbers (ready to submit, need fields, best matches, watchlist, new strong), the forms waiting for you, today's improvement plan as a tick-off checklist (ticks are remembered for the day), outreach to do, and the top watchlist items. |
+| **Ready to submit** | Forms filled in the JobAgent Chrome. Open the tab, review, press Submit yourself, then `Mark applied`. |
+| **Needs you** | Partial or blocked fills. Open the card's Details > Form fill report to see exactly which fields are waiting. |
+| **Watchlist** | Prestige roles (fellowships, residencies, pre-docs, safety programs): tracked, not applied to. Main action: `Plan referral`. |
+| **Prepared** | Applications with a packet but no filled form yet. Main action: `Fill the form`. |
+| **Best matches** | Triaged APPLY/STRETCH jobs without a packet yet. Main action: `Prepare application`. |
+| **New** | New postings with a high heuristic score, not triaged yet. |
+| **Applied** | What you marked as applied. |
+| **Programs** | Pre-docs, residencies, fellowships with windows and eligibility, with links. |
+| **Activity** | The live agent log. |
+
+**Job cards.** Company avatar, title (click for details), chips for location type (India / Remote / Relocate), visa-sponsorship signal, verdict (APPLY / STRETCH), the resume variant chosen, a fit ring (0-100), and the one-paragraph reason with the YOE/visa gap. Buttons: the contextual main action, `Details`, `Referral plan`, `Mark applied`, `Skip`. Filter chips (location, Tier S/A) and a sort (best fit / newest) sit above the list.
+
+**Detail panel (click a title or `Details`).** Tabs: **Application** (the packet: odds, strengths, gaps, company notes, answers), **Cover letter** (copy button), **Referral & outreach** (strategy, targets, connection notes, DMs, follow-ups; hover any paragraph for a `Copy` button), **Form fill report**. If something does not exist yet, the tab offers a `Generate` button.
+
+A click on any action runs in the background (toast confirms it); the sidebar footer shows today's Claude calls and what is running.
+
+Typical flow: open **Today**, work through **Ready to submit**, skim **Best matches** and press `Prepare application`/`Fill the form` on the ones you like, copy messages from **Referral & outreach** and send them yourself, tick off the plan.
 
 ---
 
@@ -176,7 +185,7 @@ Edit files in `config/` (no code changes needed). Restart the GUI after changes;
 ## 10. Files
 
 ```
-agent/      run.py (CLI)  gui.py (GUI)  feeds.py  sources_extra.py  scoring.py  pipeline.py  stakes.py  packets.py  referrals.py
+agent/      run.py (CLI)  gui.py + gui_static/index.html (GUI)  feeds.py  sources_extra.py  sources_big.py  scoring.py  pipeline.py  stakes.py  packets.py  referrals.py
             linkedin.py  fill.py  browser.py  scout.py  today.py  yc_profile.py  dashboard.py  common.py
 config/     settings.json  filters.json  companies.json  profile.json (local)  profile.example.json
 data/       jobs.db (SQLite state)  chrome-profile/  transcripts/  linkedin/   (local, gitignored)

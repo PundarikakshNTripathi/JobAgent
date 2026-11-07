@@ -81,6 +81,17 @@ WORKDAY = [
     {"name": "Intel", "tier": "B", "category": "bigco", "host": "intel.wd1.myworkdayjobs.com", "tenant": "intel", "site": "External"},
     {"name": "Salesforce", "tier": "C", "category": "bigco", "host": "salesforce.wd12.myworkdayjobs.com", "tenant": "salesforce", "site": "External_Career_Site"},
     {"name": "Adobe", "tier": "C", "category": "bigco", "host": "adobe.wd5.myworkdayjobs.com", "tenant": "adobe", "site": "external_experienced"},
+    {"name": "Micron", "tier": "B", "category": "bigco", "host": "micron.wd1.myworkdayjobs.com", "tenant": "micron", "site": "External"},
+    {"name": "Cisco", "tier": "B", "category": "bigco", "host": "cisco.wd5.myworkdayjobs.com", "tenant": "cisco", "site": "Cisco_Careers"},
+    {"name": "HP", "tier": "C", "category": "bigco", "host": "hp.wd5.myworkdayjobs.com", "tenant": "hp", "site": "ExternalCareerSite"},
+    {"name": "Capital One", "tier": "C", "category": "bigco", "host": "capitalone.wd12.myworkdayjobs.com", "tenant": "capitalone", "site": "Capital_One"},
+    {"name": "Mastercard", "tier": "C", "category": "bigco", "host": "mastercard.wd1.myworkdayjobs.com", "tenant": "mastercard", "site": "CorporateCareers"},
+    {"name": "Broadcom / VMware", "tier": "B", "category": "bigco", "host": "broadcom.wd1.myworkdayjobs.com", "tenant": "broadcom", "site": "External_Career"},
+    {"name": "Samsung Electronics", "tier": "B", "category": "bigco", "host": "sec.wd3.myworkdayjobs.com", "tenant": "sec", "site": "Samsung_Careers"},
+    {"name": "PayPal", "tier": "C", "category": "bigco", "host": "paypal.wd1.myworkdayjobs.com", "tenant": "paypal", "site": "jobs"},
+    {"name": "Workday", "tier": "C", "category": "bigco", "host": "workday.wd5.myworkdayjobs.com", "tenant": "workday", "site": "Workday"},
+    {"name": "Zoom", "tier": "C", "category": "bigco", "host": "zoom.wd5.myworkdayjobs.com", "tenant": "zoom", "site": "Zoom"},
+    {"name": "Cadence", "tier": "B", "category": "bigco", "host": "cadence.wd1.myworkdayjobs.com", "tenant": "cadence", "site": "External_Careers"},
 ]
 WD_QUERIES = ["intern", "new college graduate", "university graduate", "machine learning", "deep learning inference", "cuda", "software engineer intern", "research"]
 
@@ -108,10 +119,12 @@ def workday(w):
 
 def amazon():
     out, seen = [], set()
-    for q in ["machine learning intern", "applied scientist intern", "software development engineer intern", "software development engineer university graduate",
-              "applied scientist", "research scientist", "deep learning", "inference"]:
+    combos = [("IND", q) for q in ["machine learning intern", "applied scientist intern", "software development engineer intern", "software development engineer university graduate",
+                                    "applied scientist", "research scientist", "deep learning", "inference", "data scientist"]]
+    combos += [(c, q) for c in ("SGP", "GBR", "DEU", "CAN", "USA") for q in ["machine learning intern", "applied scientist intern", "software development engineer intern", "research scientist intern"]]
+    for cc, q in combos:
         try:
-            d = http_json("https://www.amazon.jobs/en/search.json?result_limit=25&country%5B%5D=IND&base_query=" + q.replace(" ", "+"), timeout=40)
+            d = http_json(f"https://www.amazon.jobs/en/search.json?result_limit=25&country%5B%5D={cc}&base_query=" + q.replace(" ", "+"), timeout=40)
         except Exception as e:
             log(f"amazon q={q}: {e}")
             continue
@@ -163,8 +176,11 @@ def fetch_all():
             health[c["name"]] = err or len(js)
     tiers = {c["name"].lower(): (c["tier"], c["category"]) for c in COMPANIES}
 
-    extra = [("NVIDIA", lambda: workday(WORKDAY[0])), ("Intel", lambda: workday(WORKDAY[1])),
-             ("Salesforce", lambda: workday(WORKDAY[2])), ("Adobe", lambda: workday(WORKDAY[3])), ("Amazon", amazon),
+    import sources_big as _B
+    extra = [(w["name"], (lambda w=w: workday(w))) for w in WORKDAY]
+    extra += [(f"{e[0]} (careers site)", (lambda e=e: _B.eightfold(*e))) for e in _B.EIGHTFOLD]
+    extra += [("Atlassian", _B.atlassian), ("Hugging Face", lambda: _B.workable("Hugging Face", "huggingface"))]
+    extra += [("Amazon", amazon),
              ("simplify-intern", lambda: github_list("https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json", "simplify-intern"))]
     if SETTINGS.get("include_new_grad_list"):
         extra.append(("simplify-newgrad", lambda: github_list("https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json", "simplify-newgrad")))
@@ -174,6 +190,8 @@ def fetch_all():
                 "remotive": ("C", "remote-board"), "remoteok": ("C", "remote-board")}
     wd_meta = {w["name"]: (w["tier"], w["category"]) for w in WORKDAY}
     wd_meta["Amazon"] = ("A", "bigco")
+    wd_meta.update({e[0]: (e[1], "bigco") for e in _B.EIGHTFOLD})
+    wd_meta.update({"Atlassian": ("B", "bigco"), "Hugging Face": ("A", "neolab")})
     for name, fn in extra:
         try:
             js = fn()

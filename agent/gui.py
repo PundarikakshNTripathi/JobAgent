@@ -11,61 +11,22 @@ ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "toda
 JOBS = {}   # name -> Popen
 _lock = threading.Lock()
 
-PAGE = r"""<!doctype html><meta charset=utf-8><title>JobAgent</title><meta name=viewport content="width=device-width,initial-scale=1">
-<style>
-:root{--bg:#0f1115;--card:#171a21;--bd:#262b36;--tx:#e6e6e6;--mut:#9aa3b2;--ac:#7cc4ff;--ok:#14532d;--warn:#713f12;--bad:#7f1d1d}
-*{box-sizing:border-box}body{font:14px system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--tx);margin:0}
-header{position:sticky;top:0;background:#0b0d11;border-bottom:1px solid var(--bd);padding:10px 16px;z-index:5;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-h1{font-size:16px;margin:0 12px 0 0}main{max-width:1180px;margin:0 auto;padding:12px 16px 80px}
-button{background:#232938;color:var(--tx);border:1px solid #333b4d;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px}button:hover{border-color:var(--ac)}
-button.p{background:#1d4ed8;border-color:#1d4ed8}button.g{background:var(--ok)}button.w{background:var(--warn)}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.tabs button.on{background:var(--ac);color:#06121f;border-color:var(--ac)}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:9px 12px;margin:8px 0}
-.m{color:var(--mut);font-size:12px;margin-top:3px}.pill{font-size:11px;padding:1px 7px;border-radius:9px;background:#2a3040;margin-left:4px}
-.APPLY{background:var(--ok)}.STRETCH{background:var(--warn)}.visa-no{background:var(--bad)}.visa-yes{background:var(--ok)}
-a{color:var(--ac)}input[type=search]{background:#0b0d11;color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:6px 10px;min-width:260px}
-pre{background:#0b0d11;border:1px solid var(--bd);border-radius:8px;padding:10px;max-height:280px;overflow:auto;font-size:11px;white-space:pre-wrap}
-.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.stat{color:var(--mut);font-size:12px}
-</style>
-<header><h1>JobAgent</h1>
-<button class=p onclick="run('cycle')">Run full cycle</button><button onclick="run('poll')">Poll</button><button onclick="run('triage')">Triage</button>
-<button onclick="run('scout')">Scout</button><button onclick="run('today')">Today plan</button><button onclick="run('dashboard')">Rebuild</button>
-<span class=stat id=stat></span></header>
-<main>
-<div class=tabs id=tabs></div>
-<div id=toolbar style="margin:6px 0"><input type=search id=q placeholder="filter by company / title / location" oninput="render()"> <span class=stat id=count></span></div>
-<div id=list></div>
-<h3>Today's plan</h3><pre id=today></pre>
-<h3>Activity log</h3><pre id=log></pre>
-</main>
-<script>
-const H={'X-JobAgent':'1','Content-Type':'application/json'};
-let S={jobs:[],programs:[]},TAB='ready';
-const TABS=[['ready','Ready to submit'],['fill','Needs you'],['watch','Watchlist'],['packet','Packets'],['todo','Triaged (APPLY/STRETCH)'],['new','New strong'],['applied','Applied'],['programs','Programs']];
-const e=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function api(p,o){const r=await fetch(p,o);return r.json()}
-async function load(){S=await api('/api/state');document.getElementById('stat').textContent=
- `last poll ${S.last_poll||'-'} | ${S.active} active | calls today: ${S.budget.triage_calls||0}t ${S.budget.packets||0}p ${S.budget.referrals||0}r ${S.budget.fills||0}f | ${S.running.length?('running: '+S.running.join(', ')):'idle'}`;
- document.getElementById('today').textContent=S.today||'(run Today plan)';render()}
-function tabs(){document.getElementById('tabs').innerHTML=TABS.map(([k,l])=>`<button class="${k==TAB?'on':''}" onclick="TAB='${k}';render()">${l} (${count(k)})</button>`).join('')}
-function sel(k){return S.jobs.filter(j=>k=='ready'?j.status=='ready':k=='fill'?j.status.startsWith('fill-'):k=='watch'?j.status=='watch':k=='packet'?j.status=='packet':
- k=='todo'?(j.status=='triaged'&&['APPLY','STRETCH'].includes(j.verdict)):k=='new'?(j.status=='new'&&j.score>=65):k=='applied'?j.status=='applied':false)}
-function count(k){return k=='programs'?S.programs.length:sel(k).length}
-function btn(label,cmd,id,cls=''){return `<button class="${cls}" onclick="run('${cmd}','${e(id).replace(/'/g,"\\'")}')">${label}</button>`}
-function card(j){const f=j.dir?`<button onclick="openp('${e(j.dir).replace(/\\/g,'/')}')">Open packet folder</button>`:'';
- return `<div class=card><b>${e(j.company)}</b> <span class=pill>tier ${e(j.tier)}</span> <span class="pill ${e(j.verdict)}">${e(j.verdict||'untriaged')} ${Math.round(j.fit??j.score)}</span> <span class=pill>${e(j.loc_class)}</span> <span class="pill visa-${e(j.visa)}">visa:${e(j.visa)}</span>
- <div><a href="${e(j.url)}" target=_blank>${e(j.title)}</a> <span class=m>${e((j.location||'').slice(0,80))} | ${e(j.ats)} | ${e((j.first_seen||'').slice(0,10))}</span></div>
- <div class=m>${e(j.reason||'')} ${j.yoe_gap?('| gap: '+e(j.yoe_gap)):''} ${j.resume?('| resume: '+e(j.resume)):''} ${j.watch_note?('| '+e(j.watch_note)):''}</div>
- <div class=row>${btn('Packet','packet',j.id)}${btn('Referral plan (LinkedIn)','referral',j.id)}${btn('Fill form','fill',j.id,'p')}${f}${btn('Applied','mark',j.id+' applied','g')}${btn('Skip','mark',j.id+' skip','w')}</div></div>`}
-function render(){tabs();const q=document.getElementById('q').value.toLowerCase();let h='';
- if(TAB=='programs'){h=S.programs.filter(p=>JSON.stringify(p).toLowerCase().includes(q)).map(p=>`<div class=card><b>${e(p.name)}</b> <span class=pill>${e(p.kind)}</span><div class=m>${e(p.org)} | window: ${e(p.window)} | eligible: ${e(p.eligibility)} | <a href="${e(p.url)}" target=_blank>link</a></div></div>`).join('')}
- else{const rows=sel(TAB).filter(j=>(j.company+j.title+j.location).toLowerCase().includes(q));document.getElementById('count').textContent=rows.length+' shown';h=rows.slice(0,150).map(card).join('')}
- document.getElementById('list').innerHTML=h||'<div class=m>nothing here</div>'}
-async function run(cmd,id=''){const r=await api('/api/run',{method:'POST',headers:H,body:JSON.stringify({cmd,arg:id})});setTimeout(load,800);if(r.error)alert(r.error)}
-async function openp(p){await api('/api/open',{method:'POST',headers:H,body:JSON.stringify({path:p})})}
-async function logs(){const r=await fetch('/api/log');document.getElementById('log').textContent=await r.text()}
-load();logs();setInterval(load,15000);setInterval(logs,4000);
-</script>"""
+STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui_static", "index.html")
+
+
+def page():
+    with open(STATIC, encoding="utf-8") as f:
+        return f.read()
+
+
+def packet_files(job_id):
+    c = db()
+    r = c.execute("SELECT dir FROM packets WHERE job_id=?", (job_id,)).fetchone()
+    if not r or not r["dir"] or not os.path.isdir(r["dir"]) or not os.path.abspath(r["dir"]).startswith(os.path.abspath(OUT)):
+        return {"exists": False, "files": {}}
+    d = r["dir"]
+    rd = lambda n: open(os.path.join(d, n), encoding="utf-8").read() if os.path.exists(os.path.join(d, n)) else ""
+    return {"exists": True, "files": {"README": rd("README.md"), "COVER": rd("cover_letter.txt"), "REFERRAL": rd("REFERRAL.md"), "FILL": rd("FILL_REPORT.md")}}
 
 
 def state():
@@ -75,7 +36,13 @@ def state():
                         WHERE j.active=1 AND j.status NOT IN ('skipped','dismissed','ineligible') AND (j.status!='new' OR j.score>=65)
                         ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 1500""").fetchall()
     progs = c.execute("SELECT name,org,kind,window,eligibility,url FROM programs ORDER BY added DESC").fetchall()
-    today_md = ""
+    today_md, plan = "", None
+    pj = os.path.join(OUT, "today.json")
+    if os.path.exists(pj):
+        try:
+            plan = json.load(open(pj, encoding="utf-8"))
+        except json.JSONDecodeError:
+            plan = None
     tp = os.path.join(OUT, "today.md")
     if os.path.exists(tp):
         today_md = open(tp, encoding="utf-8").read()
@@ -83,7 +50,7 @@ def state():
         running = [k for k, p in JOBS.items() if p.poll() is None]
     return {"jobs": [dict(r) for r in rows], "programs": [dict(r) for r in progs], "last_poll": meta_get(c, "last_poll"),
             "active": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0],
-            "budget": {k: budget_used(c, k) for k in ("triage_calls", "packets", "referrals", "fills", "scout", "linkedin")}, "running": running, "today": today_md}
+            "budget": {k: budget_used(c, k) for k in ("triage_calls", "packets", "referrals", "fills", "scout", "linkedin")}, "running": running, "today": today_md, "day": __import__("datetime").date.today().isoformat(), "plan": plan}
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -107,9 +74,12 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._send(403, "{}")
         path = urllib.parse.urlparse(self.path).path
         if path == "/":
-            return self._send(200, PAGE, "text/html")
+            return self._send(200, page(), "text/html")
         if path == "/api/state":
             return self._send(200, json.dumps(state(), default=str))
+        if path == "/api/packet":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            return self._send(200, json.dumps(packet_files((q.get("id") or [""])[0])))
         if path == "/api/log":
             lp = os.path.join(LOGS, "agent.log")
             txt = ""

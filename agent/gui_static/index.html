@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JobAgent</title>
+<style>
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#e3e6ec; --text:#171a21; --mut:#667085; --acc:#4f46e5; --acc2:#6366f1; --accsoft:#eef0ff;
+  --ok:#0f9d58; --oksoft:#e6f6ec; --warn:#b7791f; --warnsoft:#fdf3dc; --bad:#d92d20; --badsoft:#fde8e6; --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 14px rgba(16,24,40,.06);
+}
+:root[data-theme=dark]{
+  --bg:#0d0f14; --panel:#151922; --panel2:#1b2030; --line:#252b3a; --text:#e8eaf0; --mut:#8b94a7; --acc:#7c83ff; --acc2:#9aa0ff; --accsoft:#1d2140;
+  --ok:#3ecf8e; --oksoft:#112a20; --warn:#f0b429; --warnsoft:#2d2410; --bad:#ff6b5e; --badsoft:#34171a; --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI Variable","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100%}
+/* sidebar */
+aside{background:var(--panel);border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 10px 16px;font-weight:700;font-size:16px;letter-spacing:.2px}
+.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--acc),#22d3ee);display:grid;place-items:center;color:#fff;font-weight:800}
+nav button{width:100%;display:flex;align-items:center;gap:10px;background:none;border:0;border-radius:9px;padding:9px 10px;text-align:left;color:var(--mut);font-weight:500}
+nav button:hover{background:var(--panel2);color:var(--text)}
+nav button.on{background:var(--accsoft);color:var(--acc);font-weight:600}
+nav .ico{width:18px;text-align:center}
+nav .n{margin-left:auto;font-size:11px;background:var(--panel2);color:var(--mut);border-radius:20px;padding:1px 8px;font-weight:600}
+nav button.on .n{background:var(--acc);color:#fff}
+nav .sep{height:1px;background:var(--line);margin:10px 6px}
+.side-foot{margin-top:16px;padding:10px;border:1px dashed var(--line);border-radius:10px;color:var(--mut);font-size:12px}
+/* main */
+main{padding:0 28px 60px;min-width:0}
+.top{position:sticky;top:0;z-index:20;background:linear-gradient(var(--bg) 82%,transparent);padding:16px 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.search{flex:1;min-width:220px;position:relative}
+.search input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px 9px 34px;color:var(--text);font:inherit;box-shadow:var(--shadow)}
+.search:before{content:"\1F50D";position:absolute;left:11px;top:9px;font-size:13px;opacity:.6}
+.btn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 13px;font-weight:600;font-size:13px;box-shadow:var(--shadow)}
+.btn:hover{border-color:var(--acc)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}.btn.pri:hover{background:var(--acc2)}
+.btn.ok{background:var(--oksoft);color:var(--ok);border-color:transparent}
+.btn.warn{background:var(--warnsoft);color:var(--warn);border-color:transparent}
+.btn.sm{padding:5px 10px;font-size:12px;box-shadow:none}
+.btn.ghost{background:transparent;box-shadow:none}
+.btn[disabled]{opacity:.5;cursor:default}
+.menu{position:relative}.menu .pop{display:none;position:absolute;right:0;top:110%;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;min-width:190px;z-index:30}
+.menu.open .pop{display:block}.pop button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:7px;padding:8px 10px}.pop button:hover{background:var(--panel2)}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 14px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--mut);font-weight:600}
+.chip.on{background:var(--accsoft);border-color:var(--acc);color:var(--acc)}
+select{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:6px 10px;color:var(--text);font:inherit;font-size:12px}
+h2{font-size:20px;margin:6px 0 2px}.sub{color:var(--mut);margin:0 0 14px}
+/* cards */
+.grid{display:grid;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);display:grid;grid-template-columns:44px 1fr auto;gap:4px 14px;align-items:start}
+.card:hover{border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
+.av{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-weight:800;color:#fff;font-size:17px}
+.title{font-weight:650;font-size:15px;line-height:1.3}.title a{color:var(--text)}.title a:hover{color:var(--acc)}
+.co{color:var(--mut);font-size:12.5px;margin-bottom:2px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pill{font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;background:var(--panel2);color:var(--mut)}
+.pill.ok{background:var(--oksoft);color:var(--ok)}.pill.warn{background:var(--warnsoft);color:var(--warn)}.pill.bad{background:var(--badsoft);color:var(--bad)}.pill.acc{background:var(--accsoft);color:var(--acc)}
+.why{grid-column:2/3;color:var(--mut);font-size:13px;margin-top:6px}
+.actions{grid-column:2/4;display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.score{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;position:relative}
+.score small{display:block;font-size:9px;font-weight:600;color:var(--mut);margin-top:-2px}
+.empty{padding:50px 10px;text-align:center;color:var(--mut)}
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer}
+.stat b{display:block;font-size:26px;line-height:1.1}.stat span{color:var(--mut);font-size:12px}
+.sect{margin:22px 0 8px;font-weight:700;font-size:13px;letter-spacing:.4px;text-transform:uppercase;color:var(--mut)}
+.task{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0}
+.task input{margin-top:4px;width:17px;height:17px;accent-color:var(--acc)}
+.task.done{opacity:.55}.task.done .tt{text-decoration:line-through}
+.tt{font-weight:600}.tm{color:var(--mut);font-size:12.5px;margin-top:2px}
+.thought{background:var(--accsoft);color:var(--acc);border-radius:12px;padding:12px 14px;margin-top:12px;font-weight:600}
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(5,8,16,.45);opacity:0;pointer-events:none;transition:.2s;z-index:40}.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(760px,100vw);background:var(--bg);border-left:1px solid var(--line);transform:translateX(105%);transition:.25s;z-index:50;display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.dh{padding:16px 20px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center}
+.dh .x{margin-left:auto}
+.dt{display:flex;gap:6px;padding:10px 20px 0;background:var(--panel);border-bottom:1px solid var(--line)}
+.dt button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--mut);font-weight:600}.dt button.on{color:var(--acc);border-color:var(--acc)}
+.db{padding:18px 22px 50px;overflow:auto;flex:1}
+.md h1,.md h2,.md h3{margin:18px 0 6px}.md h1{font-size:20px}.md h2{font-size:16px}.md h3{font-size:14px}
+.md p,.md ul{margin:6px 0}.md ul{padding-left:20px}.md code{background:var(--panel2);padding:1px 5px;border-radius:5px;font-size:12px}
+.blk{position:relative;border-radius:8px;padding:4px 8px;margin:4px -8px}.blk:hover{background:var(--panel2)}
+.blk .cp{position:absolute;right:6px;top:4px;display:none}.blk:hover .cp{display:block}
+pre.log{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;max-height:70vh;overflow:auto;font-size:12px;white-space:pre-wrap}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:90;align-items:center}
+.t{background:#111827;color:#fff;border-radius:10px;padding:9px 16px;font-weight:600;box-shadow:var(--shadow)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
+.menu-btn{display:none}
+@media(max-width:860px){.app{grid-template-columns:1fr}aside{position:fixed;left:0;top:0;z-index:60;transform:translateX(-105%);transition:.2s;width:250px}aside.on{transform:none}.menu-btn{display:inline-block}main{padding:0 14px 60px}.card{grid-template-columns:40px 1fr}.score{display:none}.actions{grid-column:1/3}.why{grid-column:1/3}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside id="side">
+  <div class="brand"><div class="logo">J</div>JobAgent</div>
+  <nav id="nav"></nav>
+  <div class="side-foot" id="foot">loading...</div>
+</aside>
+<main>
+  <div class="top">
+    <button class="btn menu-btn" onclick="document.getElementById('side').classList.toggle('on')">Menu</button>
+    <div class="search"><input id="q" type="search" placeholder="Search company, title, location   ( / )" oninput="render()"></div>
+    <button class="btn pri" id="cyc" onclick="run('cycle')">Run full cycle</button>
+    <div class="menu" id="more"><button class="btn" onclick="document.getElementById('more').classList.toggle('open')">More</button>
+      <div class="pop">
+        <button onclick="run('poll')">Poll sources (free)</button><button onclick="run('triage')">Triage new postings</button><button onclick="run('scout')">Web scout (programs, X, careers)</button>
+        <button onclick="run('today','--force')">Rebuild today's plan</button><button onclick="run('dashboard')">Rebuild dashboard</button><button onclick="run('yc-profile')">Refresh YC profile</button>
+        <button onclick="toggleTheme()">Toggle light / dark</button>
+      </div></div>
+  </div>
+  <div class="filters" id="filters"></div>
+  <div id="view"></div>
+</main>
+</div>
+<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer"><div class="dh" id="dh"></div><div class="dt" id="dt"></div><div class="db md" id="db"></div></div>
+<div id="toast"></div>
+<script>
+const H={'X-JobAgent':'1','Content-Type':'application/json'};
+let S={jobs:[],programs:[],budget:{},running:[],plan:null},VIEW='today',LOC='all',TIER='all',SORT='fit',CUR=null,DTAB='README';
+const NAV=[['today','Today','☀'],['ready','Ready to submit','✅'],['fill','Needs you','✋'],['watch','Watchlist','⭐'],['packet','Prepared','📄'],
+ ['match','Best matches','🎯'],['new','New','✨'],['applied','Applied','📨'],['programs','Programs','🎓'],['log','Activity','📜']];
+const COL=['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#14b8a6','#ec4899','#84cc16','#f97316'];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const col=s=>COL[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0)%COL.length];
+async function api(p,o){const r=await fetch(p,o);return r.json()}
+function toast(m){const d=document.createElement('div');d.className='t';d.innerHTML=m;document.getElementById('toast').appendChild(d);setTimeout(()=>d.remove(),3200)}
+function toggleTheme(){const r=document.documentElement;const n=r.dataset.theme=='dark'?'light':'dark';r.dataset.theme=n;try{localStorage.setItem('ja-theme',n)}catch(e){}}
+try{const t=localStorage.getItem('ja-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t}catch(e){}
+document.addEventListener('click',e=>{if(!e.target.closest('#more'))document.getElementById('more').classList.remove('open')});
+document.addEventListener('keydown',e=>{if(e.key=='/'&&document.activeElement.tagName!='INPUT'){e.preventDefault();document.getElementById('q').focus()}if(e.key=='Escape')closeDrawer()});
+
+const sel={ready:j=>j.status=='ready',fill:j=>j.status.startsWith('fill-'),watch:j=>j.status=='watch',packet:j=>j.status=='packet',
+ match:j=>j.status=='triaged'&&['APPLY','STRETCH'].includes(j.verdict),new:j=>j.status=='new'&&j.score>=65,applied:j=>j.status=='applied'};
+const cnt=k=>k=='programs'?S.programs.length:(sel[k]?S.jobs.filter(sel[k]).length:'');
+function nav(){document.getElementById('nav').innerHTML=NAV.map(([k,l,i],ix)=>`${[1,6,9].includes(ix)?'<div class="sep"></div>':''}<button class="${VIEW==k?'on':''}" onclick="go('${k}')"><span class="ico">${i}</span>${l}${cnt(k)!==''?`<span class="n">${cnt(k)}</span>`:''}</button>`).join('')}
+function go(k){VIEW=k;document.getElementById('side').classList.remove('on');render();if(k=='log')loadLog()}
+function filters(){const f=document.getElementById('filters');
+ if(!sel[VIEW]){f.innerHTML='';return}
+ const c=(id,cur,set,opts)=>opts.map(([v,l])=>`<button class="chip ${cur==v?'on':''}" onclick="${set}='${v}';render()">${l}</button>`).join('');
+ f.innerHTML=c('loc',LOC,'LOC',[['all','All locations'],['india','India'],['remote','Remote'],['relocate','Relocate']])+'<span style="width:8px"></span>'+c('tier',TIER,'TIER',[['all','All tiers'],['SA','Tier S/A']])+
+ `<span style="flex:1"></span><select onchange="SORT=this.value;render()"><option value="fit" ${SORT=='fit'?'selected':''}>Best fit</option><option value="new" ${SORT=='new'?'selected':''}>Newest</option></select>`}
+function scoreRing(j){const v=Math.round(j.fit??j.score);const c=v>=65?'var(--ok)':v>=45?'var(--warn)':'var(--mut)';return `<div class="score" style="background:conic-gradient(${c} ${v*3.6}deg,var(--panel2) 0)"><div style="background:var(--panel);width:38px;height:38px;border-radius:50%;display:grid;place-items:center;line-height:1">${v}<small>${j.fit!=null?'fit':'match'}</small></div></div>`}
+function primary(j){if(j.status=='ready')return `<a class="btn pri sm" href="${esc(j.url)}" target="_blank">Open posting</a>`;
+ if(j.status=='packet'||j.status.startsWith('fill-'))return `<button class="btn pri sm" onclick="run('fill','${esc(j.id)}')">Fill the form</button>`;
+ if(j.status=='watch')return `<button class="btn pri sm" onclick="run('referral','${esc(j.id)}')">Plan referral</button>`;
+ return `<button class="btn pri sm" onclick="run('packet','${esc(j.id)}')">Prepare application</button>`}
+function card(j){const loc=j.loc_class=='india'?['India','ok']:j.loc_class=='remote'?['Remote','acc']:['Relocate','warn'];
+ const v=j.visa=='yes'?['visa sponsored','ok']:j.visa=='no'?['no sponsorship','bad']:null;
+ return `<div class="card"><div class="av" style="background:${col(j.company)}">${esc(j.company[0]||'?')}</div>
+ <div><div class="co">${esc(j.company)} &middot; tier ${esc(j.tier)} &middot; ${esc(j.ats)}</div><div class="title"><a href="#" onclick="openDrawer('${esc(j.id)}');return false">${esc(j.title)}</a></div>
+ <div class="chips"><span class="pill ${loc[1]}">${loc[0]}</span><span class="pill">${esc((j.location||'').slice(0,46))}</span>${v?`<span class="pill ${v[1]}">${v[0]}</span>`:''}${j.verdict?`<span class="pill ${j.verdict=='APPLY'?'ok':'warn'}">${j.verdict}</span>`:''}${j.resume?`<span class="pill">resume: ${esc(j.resume)}</span>`:''}</div></div>
+ ${scoreRing(j)}
+ <div class="why">${esc(j.reason||j.watch_note||'')}${j.yoe_gap?` <i>Gap: ${esc(j.yoe_gap)}</i>`:''}</div>
+ <div class="actions">${primary(j)}<button class="btn sm" onclick="openDrawer('${esc(j.id)}')">Details</button>${j.status!='watch'?`<button class="btn sm" onclick="run('referral','${esc(j.id)}')">Referral plan</button>`:''}
+ <button class="btn ok sm" onclick="run('mark','${esc(j.id)} applied')">Mark applied</button><button class="btn warn sm" onclick="run('mark','${esc(j.id)} skip')">Skip</button></div></div>`}
+function rows(){const q=document.getElementById('q').value.toLowerCase();let r=S.jobs.filter(sel[VIEW]);
+ if(LOC!='all')r=r.filter(j=>j.loc_class==LOC);if(TIER=='SA')r=r.filter(j=>['S','A'].includes(j.tier));
+ if(q)r=r.filter(j=>(j.company+' '+j.title+' '+j.location).toLowerCase().includes(q));
+ r.sort(SORT=='new'?(a,b)=>String(b.first_seen).localeCompare(String(a.first_seen)):(a,b)=>(b.fit??b.score)-(a.fit??a.score));return r}
+function today(){const ready=S.jobs.filter(sel.ready),fill=S.jobs.filter(sel.fill),watch=S.jobs.filter(sel.watch),p=S.plan,b=S.budget;
+ let done={};try{done=JSON.parse(localStorage.getItem('ja-done-'+S.day)||'{}')}catch(e){}
+ const stat=(n,l,k)=>`<div class="stat" onclick="go('${k}')"><b>${n}</b><span>${l}</span></div>`;
+ let h=`<h2>Good ${new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening'}</h2><p class="sub">${S.day} &middot; last sweep ${esc((S.last_poll||'-').replace('T',' '))} &middot; ${S.active.toLocaleString()} postings tracked</p>
+ <div class="stats">${stat(ready.length,'ready to submit','ready')}${stat(fill.length,'need a few fields','fill')}${stat(S.jobs.filter(sel.match).length,'best matches','match')}${stat(watch.length,'on the watchlist','watch')}${stat(S.jobs.filter(sel.new).length,'new strong matches','new')}</div>`;
+ if(ready.length||fill.length){h+=`<div class="sect">Waiting for you</div><div class="grid">${[...ready,...fill].slice(0,6).map(card).join('')}</div>`}
+ if(p){h+=`<div class="sect">Today's plan <span style="text-transform:none;letter-spacing:0;font-weight:500">- tick them off</span></div>`+(p.tasks||[]).map((t,i)=>`<label class="task ${done['t'+i]?'done':''}"><input type="checkbox" ${done['t'+i]?'checked':''} onchange="tick('t${i}',this.checked)"><div><div class="tt">${esc(t.title)} <span class="pill">${t.minutes} min</span></div><div class="tm">${esc(t.why)}</div><div class="tm"><b>Proof:</b> ${esc(t.proof)}</div></div></label>`).join('');
+  if((p.outreach||[]).length)h+=`<div class="sect">Outreach today</div>`+p.outreach.map((o,i)=>`<label class="task ${done['o'+i]?'done':''}"><input type="checkbox" ${done['o'+i]?'checked':''} onchange="tick('o${i}',this.checked)"><div><div class="tt">${esc(o.who_or_where)}</div><div class="tm">${esc(o.action)}</div></div></label>`).join('');
+  if(p.thought)h+=`<div class="thought">${esc(p.thought)}</div>`}else h+=`<div class="empty">No plan yet. <button class="btn sm" onclick="run('today','--force')">Build today's plan</button></div>`;
+ if(watch.length)h+=`<div class="sect">High-stakes watchlist (relationship first)</div><div class="grid">${watch.slice(0,4).map(card).join('')}</div>`;
+ return h}
+function tick(k,v){let d={};try{d=JSON.parse(localStorage.getItem('ja-done-'+S.day)||'{}')}catch(e){}d[k]=v;try{localStorage.setItem('ja-done-'+S.day,JSON.stringify(d))}catch(e){}render()}
+function programs(){const q=document.getElementById('q').value.toLowerCase();const r=S.programs.filter(p=>JSON.stringify(p).toLowerCase().includes(q));
+ return `<h2>Pre-docs, residencies, fellowships</h2><p class="sub">Prestige programs are tracked, never auto-applied. Build the relationship first.</p><div class="grid">${r.map(p=>`<div class="card"><div class="av" style="background:${col(p.org)}">${esc((p.org||'?')[0])}</div><div><div class="co">${esc(p.org)} &middot; ${esc(p.kind)}</div><div class="title"><a href="${esc(p.url)}" target="_blank">${esc(p.name)}</a></div></div><span></span><div class="why"><b>Window:</b> ${esc(p.window)}<br><b>Eligible:</b> ${esc(p.eligibility)}</div></div>`).join('')||'<div class="empty">Nothing yet. Run the web scout.</div>'}</div>`}
+function render(){nav();filters();const v=document.getElementById('view');
+ document.getElementById('foot').innerHTML=`Claude today<br><b>${S.budget.triage_calls||0}</b> triage &middot; <b>${S.budget.packets||0}</b> packets &middot; <b>${S.budget.referrals||0}</b> referrals &middot; <b>${S.budget.fills||0}</b> fills<br>${S.running.length?`<span class="spin"></span>${esc(S.running.join(', '))}`:'idle'}`;
+ document.getElementById('cyc').innerHTML=S.running.includes('cycle')?'<span class="spin"></span>Running...':'Run full cycle';
+ if(VIEW=='today')v.innerHTML=today();else if(VIEW=='programs')v.innerHTML=programs();else if(VIEW=='log')v.innerHTML='<h2>Activity</h2><p class="sub">Latest agent log</p><pre class="log" id="logbox"></pre>';
+ else{const r=rows(),t=NAV.find(n=>n[0]==VIEW)[1];v.innerHTML=`<h2>${t}</h2><p class="sub">${r.length} shown</p><div class="grid">${r.slice(0,120).map(card).join('')||'<div class="empty">Nothing here yet.</div>'}</div>`}}
+async function load(){try{S=await api('/api/state');render();if(CUR&&document.getElementById('drawer').classList.contains('on')){}}catch(e){}}
+async function run(cmd,arg=''){const r=await api('/api/run',{method:'POST',headers:H,body:JSON.stringify({cmd,arg})});
+ if(r.error)toast(esc(r.error));else toast('Started: '+esc(r.started));setTimeout(load,700)}
+async function loadLog(){const t=await (await fetch('/api/log')).text();const b=document.getElementById('logbox');if(b){b.textContent=t;b.scrollTop=b.scrollHeight}}
+/* drawer */
+function md(t){const lines=t.split('\n');let h='',list=false,para=[];const inl=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/(https?:\/\/[^\s<)]+)/g,'<a href="$1" target="_blank">$1</a>');
+ const flush=()=>{if(para.length){const txt=para.join(' ');h+=`<div class="blk"><p>${inl(txt)}</p><button class="btn sm cp" onclick="cp(this)" data-t="${esc(txt)}">Copy</button></div>`;para=[]}};
+ const endl=()=>{if(list){h+='</ul>';list=false}};
+ for(const l of lines){if(/^#{1,3} /.test(l)){flush();endl();const n=l.match(/^#+/)[0].length;h+=`<h${n}>${inl(l.replace(/^#+ /,''))}</h${n}>`}
+  else if(/^\s*[-*] /.test(l)){flush();if(!list){h+='<ul>';list=true}h+=`<li>${inl(l.replace(/^\s*[-*] /,''))}</li>`}
+  else if(!l.trim()){flush();endl()}else{endl();para.push(l.trim())}}flush();endl();return h}
+function cp(b){navigator.clipboard.writeText(b.dataset.t).then(()=>toast('Copied'))}
+const DT=[['README','Application'],['COVER','Cover letter'],['REFERRAL','Referral & outreach'],['FILL','Form fill report']];
+async function openDrawer(id){const j=S.jobs.find(x=>x.id==id);if(!j)return;CUR=j;DTAB='README';
+ document.getElementById('dh').innerHTML=`<div class="av" style="background:${col(j.company)}">${esc(j.company[0])}</div><div><div class="co">${esc(j.company)} &middot; ${esc(j.location||'')}</div><div class="title">${esc(j.title)}</div></div><div class="x"><a class="btn sm" href="${esc(j.url)}" target="_blank">Open posting</a> <button class="btn sm ghost" onclick="closeDrawer()">Close</button></div>`;
+ document.getElementById('drawer').classList.add('on');document.getElementById('scrim').classList.add('on');drawerTab()}
+async function drawerTab(){document.getElementById('dt').innerHTML=DT.map(([k,l])=>`<button class="${DTAB==k?'on':''}" onclick="DTAB='${k}';drawerTab()">${l}</button>`).join('');
+ const b=document.getElementById('db');b.innerHTML='<span class="spin"></span>Loading';const r=await api('/api/packet?id='+encodeURIComponent(CUR.id));
+ if(!r.exists){b.innerHTML=`<div class="empty">No application packet yet.<br><br><button class="btn pri" onclick="run('packet','${esc(CUR.id)}');closeDrawer()">Prepare application</button><br><br><span class=sub>${esc(CUR.reason||'')}</span></div>`;return}
+ const t=r.files[DTAB]||'';b.innerHTML=t?(DTAB=='COVER'?`<div class="blk" style="white-space:pre-wrap">${esc(t)}<button class="btn sm cp" onclick="cp(this)" data-t="${esc(t)}">Copy</button></div>`:md(t)):`<div class="empty">Not generated yet.<br><br><button class="btn pri" onclick="run('${DTAB=='REFERRAL'?'referral':DTAB=='FILL'?'fill':'packet'}','${esc(CUR.id)}')">Generate</button></div>`}
+function closeDrawer(){document.getElementById('drawer').classList.remove('on');document.getElementById('scrim').classList.remove('on')}
+load();setInterval(load,12000);setInterval(()=>{if(VIEW=='log')loadLog()},4000);
+</script>
+</body>
+</html>
