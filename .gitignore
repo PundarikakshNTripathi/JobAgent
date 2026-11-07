@@ -1,0 +1,10 @@
+# runtime state, personal data, generated output
+data/
+out/
+logs/
+.playwright-mcp/
+__pycache__/
+*.pyc
+# personal facts and contact details stay local; copy profile.example.json -> profile.json
+config/profile.json
+research/ats_probe.json

@@ -1,0 +1,129 @@
+"""Referral planning. Uses YOUR LinkedIn connections export (data/Connections.csv) -- no logged-in scraping of LinkedIn.
+Per target job: rank connections at that company, have Claude research the best ones on the public web, draft the outreach."""
+import csv, json, os, re
+from common import db, log, now, run_claude, extract_json, DATA, ROOT, SETTINGS, PROFILE, budget_add
+
+ALIASES = {"google deepmind": ["deepmind", "google deepmind", "google"], "meta": ["meta", "facebook", "meta ai"], "microsoft": ["microsoft", "microsoft research"],
+           "nvidia": ["nvidia"], "amazon": ["amazon", "aws", "amazon web services"], "openai": ["openai"], "anthropic": ["anthropic"],
+           "cursor (anysphere)": ["anysphere", "cursor"], "together ai": ["together ai", "together.ai", "togetherai"], "inferact (vllm)": ["inferact", "vllm"],
+           "radixark (sglang)": ["radixark", "sglang"], "fireworks ai": ["fireworks ai", "fireworks"], "xai": ["xai", "x.ai"], "thinking machines lab": ["thinking machines"],
+           "character.ai": ["character.ai", "character ai"], "scale ai": ["scale ai", "scale"], "sarvam ai": ["sarvam", "sarvam ai"]}
+NOISE = re.compile(r"\b(inc|llc|ltd|labs?|corp|corporation|technologies|technology|ai|pvt|private|limited|the|\(yc [a-z]\d+\))\b|[^a-z0-9 ]", re.I)
+
+
+def norm(s):
+    return re.sub(r"\s+", " ", NOISE.sub(" ", (s or "").lower())).strip()
+
+
+def load_connections():
+    path = os.path.join(ROOT, SETTINGS.get("linkedin_connections_csv", "data/Connections.csv"))
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        lines = f.read().splitlines()
+    start = next((i for i, l in enumerate(lines) if l.lower().startswith("first name")), 0)
+    rows = list(csv.DictReader(lines[start:]))
+    out = []
+    for r in rows:
+        out.append({"name": f"{r.get('First Name','')} {r.get('Last Name','')}".strip(), "url": r.get("URL", ""), "company": r.get("Company", ""),
+                    "position": r.get("Position", ""), "connected_on": r.get("Connected On", ""), "email": r.get("Email Address", "")})
+    return out
+
+
+def match_connections(company, conns):
+    keys = {norm(company)} | {norm(a) for a in ALIASES.get(company.lower(), [])}
+    keys.discard("")
+    hits = []
+    for c in conns:
+        n = norm(c["company"])
+        if n and any(k == n or (len(k) > 3 and (k in n or n in k)) for k in keys):
+            hits.append(c)
+    return hits
+
+
+def rank(hits, family):
+    def s(c):
+        p = c["position"].lower()
+        v = 0
+        if re.search(r"research|scientist|engineer|member of technical staff|mts|developer|fellow", p):
+            v += 3
+        if re.search(r"recruit|talent|sourcer|university|campus|early career", p):
+            v += 2.5
+        if re.search(r"manager|lead|head|director|principal|staff", p):
+            v += 1.5
+        if family in ("mlsys",) and re.search(r"kernel|inference|gpu|cuda|systems|compiler|infra", p):
+            v += 3
+        if family in ("safety", "ai_research") and re.search(r"safety|alignment|interpret|research", p):
+            v += 3
+        if re.search(r"intern", p):
+            v -= 1
+        if re.search(r"ceo|cto|founder|vp|president|chief", p):
+            v -= 1
+        return v
+    return sorted(hits, key=s, reverse=True)
+
+
+REF_PROMPT = """You are a networking coach helping a final-year undergrad from a non-prestigious university in India get a referral/intro for a specific job. Be concrete and honest. Use WebSearch/WebFetch (public web only: personal sites, GitHub, Google Scholar, arXiv, blogs, talks, company pages, X/Twitter public posts). Do NOT try to log into LinkedIn.
+
+CANDIDATE
+{summary}
+Best proof points: {projects}
+Site: {site}
+
+TARGET JOB: {company} | {title} | {location} | {url}
+Why it fits (triage): {reason}
+
+{contacts_block}
+
+TASKS
+{tasks}
+
+Rules for messages: first-person, human, <= 90 words for DMs, <= 280 characters for a LinkedIn connection note, specific hook from THEIR actual public work (cite what you found), ONE clear low-friction ask, no flattery, no "I'd love to pick your brain". Never claim anything not in the candidate summary. Offer a one-paragraph blurb they can paste to the recruiter. Do not mention Quiet Intelligence's unreleased work beyond what is public on the candidate's site.
+
+Return ONLY JSON:
+{{"strategy":"2-4 sentences: who to contact first, in what order, and what to ask for (advice first vs referral)",
+"targets":[{{"name":"","role":"","why_them":"","evidence":"what you found on the web about their work, with URLs","profile_url":"","how_to_reach":"LinkedIn connection note / email / X DM / GitHub issue etc.",
+"connection_note":"<=280 chars","dm":"<=90 words","followup":"send after 4-5 days if no reply","blurb_for_referrer":"short paragraph"}}],
+"before_you_message":["2-4 concrete prep actions, e.g. read paper X, star/contribute to repo Y, post Z"],
+"timing":"when to ask relative to applying (before/after) per what you found about this company's referral process; mark UNVERIFIED if unsure"}}
+"""
+
+
+def plan_referral(job_id):
+    c = db()
+    job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    tri = c.execute("SELECT * FROM triage WHERE job_id=?", (job_id,)).fetchone()
+    pk = c.execute("SELECT * FROM packets WHERE job_id=?", (job_id,)).fetchone()
+    conns = load_connections()
+    hits = rank(match_connections(job["company"], conns), job["family"])[:6]
+    if hits:
+        cb = "CONNECTIONS THE CANDIDATE ALREADY HAS AT THIS COMPANY (from their own LinkedIn export, ranked by my heuristic):\n" + \
+             "\n".join(f"- {h['name']} | {h['position']} | connected {h['connected_on']} | {h['url']}" for h in hits)
+        tasks = ("1. Research each listed connection on the public web (name + company + role) to learn their real work/team.\n"
+                 "2. Pick the best 1-2 to approach (relevant team, approachable seniority) plus a recruiter/university-recruiting route if listed; explain why.\n"
+                 "3. Draft the messages. These are existing connections, so a DM (not a connection request) fits; acknowledge the connection is dormant honestly and briefly.")
+    else:
+        cb = ("NO EXISTING CONNECTIONS FOUND" + (" (connections file is present but nothing matched this company)" if conns else " (no data/Connections.csv exported yet)") +
+              ". Find warm paths on the public web instead: the hiring manager or team named in the posting, authors of the team's recent papers/blog posts, open-source maintainers of the relevant repo, "
+              "and BBDU Your City / Indian-undergrad alumni at the company if you can find any publicly.")
+        tasks = ("1. Identify 2-3 specific real people (cite where you found them) who work on the relevant team/problem.\n"
+                 "2. Rank them by approachability and relevance.\n3. Draft cold-outreach messages (connection note, DM, email if a public email exists).")
+    prompt = REF_PROMPT.format(summary=PROFILE["summary"], projects=" | ".join(PROFILE["projects"][:3]), site=PROFILE["website"], company=job["company"],
+                               title=job["title"], location=job["location"], url=job["url"], reason=(tri["reason"] if tri else ""), contacts_block=cb, tasks=tasks)
+    text, _ = run_claude(prompt, allowed_tools="WebSearch,WebFetch", model=SETTINGS["claude_model_packets"], timeout=SETTINGS["packet_timeout_s"], max_turns=16)
+    r = extract_json(text)
+    out = [f"# Referral plan: {job['company']} - {job['title']}", job["url"], "", "## Strategy", r.get("strategy", ""), "", "## Timing", r.get("timing", ""), "", "## Do first"]
+    out += [f"- {x}" for x in r.get("before_you_message", [])]
+    for i, t in enumerate(r.get("targets", []), 1):
+        out += ["", f"## Target {i}: {t.get('name')} ({t.get('role')})", f"Why: {t.get('why_them')}", f"Evidence: {t.get('evidence')}", f"Profile: {t.get('profile_url')}",
+                f"Reach via: {t.get('how_to_reach')}", "", "**Connection note**", t.get("connection_note", ""), "", "**DM**", t.get("dm", ""), "", "**Follow-up (+4-5 days)**",
+                t.get("followup", ""), "", "**Blurb they can forward**", t.get("blurb_for_referrer", "")]
+    d = pk["dir"] if pk else os.path.join(DATA, "referrals")
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, "REFERRAL.md")
+    open(path, "w", encoding="utf-8").write("\n".join(out))
+    c.execute("UPDATE packets SET referral_at=? WHERE job_id=?", (now(), job_id))
+    c.commit()
+    budget_add(c, "referrals")
+    log(f"referral plan written: {path} ({len(hits)} matching connections)")
+    return path, len(hits)

@@ -1,0 +1,159 @@
+"""Browser form filling. Claude (your subscription) drives a dedicated Chrome window through Playwright MCP
+over CDP. The agent can fill everything but is blocked from submitting:
+  1. prompt rule: never press the final submit button;
+  2. page-level guard script injected into every page: swallows submit events / submit-button clicks / application POSTs
+     for `guard_minutes` after the run starts (longer than the agent's hard timeout), with a visible banner;
+  3. hard subprocess timeout shorter than the guard window.
+You review the filled tab and press Submit yourself."""
+import json, os, socket, subprocess, time, urllib.request
+from common import db, log, now, run_claude, extract_json, DATA, SETTINGS, PROFILE, budget_add, notify
+
+PORT = SETTINGS["chrome_debug_port"]
+CHROME_CANDIDATES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
+
+GUARD_JS = r"""
+(() => {
+  const UNTIL = %d;
+  const locked = () => Date.now() < UNTIL;
+  const stamp = new Date(UNTIL).toLocaleTimeString();
+  const banner = () => {
+    if (!document.documentElement) return;
+    let b = document.getElementById('__jobagent_banner');
+    if (!locked()) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.id = '__jobagent_banner';
+      b.style.cssText = 'position:fixed;z-index:2147483647;left:0;right:0;top:0;background:#7c2d12;color:#fff;font:600 13px system-ui;padding:6px 12px;text-align:center;pointer-events:none';
+      document.documentElement.appendChild(b); }
+    b.textContent = 'JobAgent is filling this form - Submit is locked until ' + stamp + '. After that, review and submit yourself.';
+  };
+  setInterval(banner, 1000); document.addEventListener('DOMContentLoaded', banner);
+  const FINAL = /^(submit( application)?|send( application)?|apply now|complete( application)?|finish|confirm( and submit)?)$/i;
+  const SAFE = /^(next|continue|save|review|upload|add|back|attach|save and continue|save & continue)/i;
+  const txtOf = el => (el && (el.innerText || el.value || el.getAttribute('aria-label') || '')).trim();
+  addEventListener('submit', e => {
+    if (!locked()) return;
+    const t = txtOf(e.submitter);
+    if (t && SAFE.test(t) && !FINAL.test(t)) return;
+    e.preventDefault(); e.stopImmediatePropagation(); console.warn('[jobagent] submit blocked');
+  }, true);
+  addEventListener('click', e => {
+    if (!locked()) return;
+    const el = e.target && e.target.closest ? e.target.closest('button, input[type=submit], [role=button], a') : null;
+    if (!el) return;
+    const t = txtOf(el);
+    const isApplyOpen = /^apply( for this job| to this job)?$/i.test(t);
+    const submitType = (el.type === 'submit') && !!el.closest('form') && !SAFE.test(t);
+    if (!isApplyOpen && (FINAL.test(t) || submitType || /submit/i.test(t))) {
+      e.preventDefault(); e.stopImmediatePropagation(); console.warn('[jobagent] submit click blocked');
+    }
+  }, true);
+  const BAD = /(submit[-_ ]?application|SubmitSingleApplicationForm|applicationForm\.submit|\/applications?\/?$|\/apply\/?$|candidate\/apply|\/submit\/?$|postApplication)/i;
+  const of = window.fetch;
+  window.fetch = function (input, init) {
+    try { const u = typeof input === 'string' ? input : (input && input.url) || ''; const m = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      if (locked() && m === 'POST' && BAD.test(u)) { console.warn('[jobagent] POST blocked', u); return Promise.reject(new Error('blocked by JobAgent guard')); } } catch (e) {}
+    return of.apply(this, arguments); };
+  const oo = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (m, u) { if (locked() && String(m).toUpperCase() === 'POST' && BAD.test(String(u))) { this.send = () => { throw new Error('blocked by JobAgent guard'); }; } return oo.apply(this, arguments); };
+})();
+"""
+
+FILL_PROMPT = """You are filling out ONE job application form in a browser using the Playwright MCP tools, on behalf of the candidate. You are NOT allowed to submit it.
+
+ABSOLUTE RULES
+- NEVER click the final "Submit", "Submit application", "Send", "Finish" or equivalent button. Stop with the form fully filled and the final button untouched. A page guard also blocks submission; do not try to bypass or probe it.
+- Do not create accounts, set passwords, solve CAPTCHAs, or complete email/phone verification. If the form requires any of that before it can be filled, stop and report BLOCKED with the URL and exact reason.
+- Only enter facts that appear below. Never invent. If a required field needs information not given (salary, exact dates, EEO/demographics other than 'decline', AI-tool-use disclosure, references, etc.), leave it blank and list it in needs_user. For EEO/demographic/veteran/disability questions choose the decline-to-answer option.
+- Open the application in a NEW tab (browser_tabs action=new) so earlier tabs stay open. Leave this tab open at the end.
+- Stay efficient: use browser_snapshot, browser_fill_form, browser_type, browser_select_option, browser_click, browser_file_upload. Budget about 40 tool calls. Re-snapshot at the end and verify required fields are filled and nothing shows a validation error.
+
+JOB: {company} - {title}
+APPLICATION URL: {url}
+(If the page is a posting with an "Apply" button, click Apply to reach the form. If it redirects to a third-party ATS, continue there.)
+
+CANDIDATE DATA
+{profile}
+
+FILES TO UPLOAD (use browser_file_upload with these exact absolute paths)
+- Resume (PDF): {resume}
+- Cover letter (PDF, upload only if there is a cover letter upload field; otherwise paste the text): {cover_pdf}
+
+COVER LETTER TEXT
+{cover}
+
+PREPARED ANSWERS (adapt lightly to the exact question wording and character limits)
+{answers}
+
+PREPARED FORM-QUESTION ANSWERS
+{formq}
+
+When done return ONLY this JSON:
+{{"status":"READY_TO_SUBMIT|PARTIAL|BLOCKED","filled":["short list of sections filled"],"needs_user":["every field you left blank or unsure about, with the exact question text"],
+"blocker":"reason if BLOCKED/PARTIAL, else ''","submit_button_label":"label of the final button you did NOT press","page_url":"current URL"}}
+"""
+
+
+def _port_open():
+    with socket.socket() as s:
+        s.settimeout(1)
+        return s.connect_ex(("127.0.0.1", PORT)) == 0
+
+
+def ensure_chrome():
+    if _port_open():
+        return True
+    exe = next((p for p in CHROME_CANDIDATES if os.path.exists(p)), None)
+    if not exe:
+        raise RuntimeError("Chrome/Edge not found")
+    prof = os.path.join(DATA, "chrome-profile")
+    os.makedirs(prof, exist_ok=True)
+    subprocess.Popen([exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check", "about:blank"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(40):
+        if _port_open():
+            return True
+        time.sleep(0.5)
+    raise RuntimeError("Chrome debug port did not open")
+
+
+def fill_job(job_id):
+    c = db()
+    job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    pk = c.execute("SELECT * FROM packets WHERE job_id=?", (job_id,)).fetchone()
+    if not (job and pk):
+        raise ValueError("no packet for this job; run `packet` first")
+    data = json.load(open(os.path.join(pk["dir"], "packet.json"), encoding="utf-8"))["packet"]
+    ensure_chrome()
+    until = int((time.time() + SETTINGS["guard_minutes"] * 60) * 1000)
+    guard = os.path.join(DATA, "guard.js")
+    open(guard, "w", encoding="utf-8").write(GUARD_JS % until)
+    mcp = {"mcpServers": {"fillbrowser": {"command": "cmd", "args": ["/c", "npx", "-y", "@playwright/mcp@0.0.84", "--cdp-endpoint", f"http://127.0.0.1:{PORT}",
+                                                                  "--init-script", guard, "--allow-unrestricted-file-access"]}}}
+    mcp_path = os.path.join(DATA, "mcp-fill.json")
+    json.dump(mcp, open(mcp_path, "w"), indent=1)
+    prof = {k: PROFILE[k] for k in ("name", "first_name", "last_name", "email", "phone", "location", "linkedin", "github", "org_github", "website", "twitter", "education",
+                                    "graduation", "summary", "experience", "projects", "achievements", "skills_defensible", "form_defaults")}
+    prompt = FILL_PROMPT.format(company=job["company"], title=job["title"], url=job["url"], profile=json.dumps(prof, indent=1),
+                                resume=data.get("resume_path", ""), cover_pdf=data.get("cover_pdf") or "(none generated; paste text)", cover=data.get("cover_letter", ""),
+                                answers=json.dumps(data.get("answers", {}), indent=1), formq=json.dumps(data.get("form_questions", []), indent=1))
+    log(f"filling {job['company']} | {job['title']} ...")
+    timeout = min(SETTINGS["fill_timeout_s"], SETTINGS["guard_minutes"] * 60 - 60)
+    text, _ = run_claude(prompt, allowed_tools="mcp__fillbrowser", model=SETTINGS["claude_model_packets"], timeout=timeout, max_turns=70,
+                         extra_args=["--mcp-config", mcp_path, "--strict-mcp-config"])
+    try:
+        rep = extract_json(text)
+    except Exception:
+        rep = {"status": "PARTIAL", "filled": [], "needs_user": [], "blocker": "could not parse fill report: " + text[:300]}
+    c.execute("UPDATE packets SET filled_at=?, fill_report=? WHERE job_id=?", (now(), json.dumps(rep), job_id))
+    status = rep.get("status", "PARTIAL")
+    c.execute("UPDATE jobs SET status=? WHERE id=?", ("ready" if status == "READY_TO_SUBMIT" else "fill-" + status.lower(), job_id))
+    c.commit()
+    budget_add(c, "fills")
+    with open(os.path.join(pk["dir"], "FILL_REPORT.md"), "w", encoding="utf-8") as f:
+        f.write(f"# Fill report ({now()})\nstatus: **{status}**\n\nfilled: {rep.get('filled')}\n\nneeds you:\n" + "\n".join(f"- {x}" for x in rep.get("needs_user", [])) +
+                f"\n\nblocker: {rep.get('blocker','')}\n\nfinal button NOT pressed: {rep.get('submit_button_label','')}\nlast page: {rep.get('page_url','')}\n")
+    if status == "READY_TO_SUBMIT":
+        notify(f"READY - hit Submit: {job['company']}", f"{job['title']}. Form filled in the JobAgent Chrome window (tab left open). Review, then submit. Needs you: {len(rep.get('needs_user', []))} field(s).")
+    else:
+        notify(f"Needs your help: {job['company']}", f"{job['title']}: {status}. {rep.get('blocker','')[:160]}")
+    return rep
