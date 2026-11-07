@@ -33,7 +33,8 @@ Return ONLY this JSON object:
 "cover_letter":"...","answers":{{"why_company":"","why_role":"","relevant_project":"","strengths_fit":"","anything_else":""}},
 "form_questions":[{{"question":"","answer":"","needs_user":false,"confidence":"high|medium|low"}}],
 "needs_user":["things only the candidate can supply"],"deadline":"if stated, else ''","visa_note":"what the posting says about sponsorship/location, else ''",
-"company_notes":"hiring process / what they value, from what you read (2-4 sentences)","referral_priority":"high|medium|low"}}
+"company_notes":"hiring process / what they value, from what you read (2-4 sentences)","referral_priority":"high|medium|low",
+"eligibility":"ok|uncertain|blocked","eligibility_reason":"blocked ONLY for a hard stop stated in the posting/form: requires existing work authorization in a country where the candidate has none and says it does not sponsor; US citizenship/clearance; PhD-only; wrong level; must be enrolled in a program the candidate is not in. uncertain if sponsorship is unstated for an on-site role outside India. Candidate: Indian citizen, India-authorized only, will relocate if sponsored."}}
 """
 
 
@@ -118,7 +119,7 @@ def build_packet(job_id):
     p["cover_pdf"] = pdf if make_cover_pdf(p.get("cover_letter", ""), job["company"], job["title"], pdf) else ""
     json.dump({"job": dict(job), "triage": dict(tri) if tri else None, "packet": p}, open(os.path.join(d, "packet.json"), "w", encoding="utf-8"), indent=1)
     md = [f"# {job['company']} - {job['title']}", f"{job['location']}  |  {job['url']}", f"first seen {job['first_seen']}  |  score {job['score']:.0f}  |  visa signal: {job['visa']}", "",
-          f"**Resume to use:** {p['resume']} -> `{p['resume_path']}`", f"**Honest odds:** {p.get('honest_odds','')}", f"**Referral priority:** {p.get('referral_priority','')}",
+          f"**Resume to use:** {p['resume']} -> `{p['resume_path']}`", f"**Eligibility:** {p.get('eligibility','?')} {p.get('eligibility_reason','')}", f"**Honest odds:** {p.get('honest_odds','')}", f"**Referral priority:** {p.get('referral_priority','')}",
           f"**Deadline:** {p.get('deadline') or 'not stated'}  |  **Visa/location:** {p.get('visa_note') or 'not stated'}", "", "## Role", p.get("role_summary", ""), "",
           "## Strengths", *[f"- {x}" for x in p.get("strengths", [])], "", "## Gaps (be ready to address)", *[f"- {x}" for x in p.get("gaps", [])], "",
           "## Company notes", p.get("company_notes", ""), "", "## Cover letter", p.get("cover_letter", ""), "", "## Answers"]
@@ -130,7 +131,7 @@ def build_packet(job_id):
     md += ["", "## Needs you"] + ([f"- {x}" for x in p.get("needs_user", [])] or ["- nothing flagged"])
     open(os.path.join(d, "README.md"), "w", encoding="utf-8").write("\n".join(md))
     c.execute("INSERT OR REPLACE INTO packets(job_id,dir,at) VALUES(?,?,?)", (job_id, d, now()))
-    c.execute("UPDATE jobs SET status='packet' WHERE id=?", (job_id,))
+    c.execute("UPDATE jobs SET status=? WHERE id=?", ("ineligible" if p.get("eligibility") == "blocked" else "packet", job_id))
     c.commit()
     budget_add(c, "packets")
     log(f"packet ready: {job['company']} | {job['title']} -> {d}")

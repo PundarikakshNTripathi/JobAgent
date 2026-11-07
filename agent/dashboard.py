@@ -48,6 +48,7 @@ def build():
         ("READY TO SUBMIT (form filled, review and press Submit)", "j.status='ready'"),
         ("Needs your help (partial / blocked fill)", "j.status LIKE 'fill-%'"),
         ("Packets prepared (cover letter, answers, resume chosen)", "j.status='packet'"),
+        ("Looked good but ruled out by the packet (visa / level / eligibility)", "j.status='ineligible'"),
         ("Triaged: APPLY / STRETCH, no packet yet", "j.status='triaged' AND t.verdict IN ('APPLY','STRETCH')"),
         ("New since last look, high heuristic score, not yet triaged", "j.status='new' AND j.baseline=0 AND j.score>=65 AND t.job_id IS NULL"),
     ]
