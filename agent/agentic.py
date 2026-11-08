@@ -24,6 +24,9 @@ TOOLS (call exactly one per step as JSON {{"tool": name, "args": {{...}}}}; to f
 - remember {{"note": ""}}                       store a durable fact about the user
 - web_search {{"q": ""}}                        search the web
 - fetch {{"url": ""}}                           read a web page as text
+- inbox_list {{}}                              what the user pasted into the inbox and what happened to each item
+- inbox_retry {{"id": "all"}}                   re-run inbox items that are waiting for quota or errored
+- picks_list {{}}                               jobs the user chose to work on manually
 - inbox {{"text": "", "context": ""}}           add an opportunity found outside the feeds and process it
 Rules: never submit an application (the user does); never invent ids; stop as soon as the goal is met; at most {steps} steps.
 
@@ -83,6 +86,16 @@ def tool(name, a):
     if name == "fetch":
         t, body = web.fetch_text(a.get("url", ""), 3000)
         return f"{t}\n{body}"
+    if name == "inbox_list":
+        import inbox
+        return inbox.summary(30)
+    if name == "inbox_retry":
+        import inbox
+        inbox.retry(str(a.get("id", "all")))
+        return inbox.summary(10)
+    if name == "picks_list":
+        rows = c.execute("SELECT p.job_id, p.actions, j.company, j.title, j.status FROM picks p JOIN jobs j ON j.id=p.job_id ORDER BY p.ts DESC LIMIT 25").fetchall()
+        return "\n".join(f"[{r['job_id']}] {r['company']} | {r['title'][:50]} | actions={r['actions']} | {r['status']}" for r in rows) or "no picks yet"
     if name == "inbox":
         import inbox
         i = inbox.add(a.get("text", ""), a.get("context", "from agent"))

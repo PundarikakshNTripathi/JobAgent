@@ -266,8 +266,8 @@
   "latam",
   "australia"
  ],
- "yoe_hard_exclude_at": 5,
- "yoe_penalty_at": 3,
+ "yoe_hard_exclude_at": 3,
+ "yoe_penalty_at": 2,
  "drop_locations": [
   "china",
   "shanghai",
@@ -279,5 +279,12 @@
   "russia",
   "moscow"
  ],
- "home_locations": []
+ "home_locations": [],
+ "visa_weights": {
+  "relocate_yes": 15,
+  "relocate_unknown": -10,
+  "relocate_no": -25,
+  "remote_no": -15,
+  "us_uk_ca_intern_without_sponsorship": -10
+ }
 }

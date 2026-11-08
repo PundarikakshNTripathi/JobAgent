@@ -43,12 +43,18 @@ def cycle():
         return
     if not acquire_lock():
         return
+    common.BACKGROUND = True  # scheduled work must leave quota headroom for the user's own requests
     try:
         c = db()
         deadline = time.time() + SETTINGS.get("cycle_minutes_budget", 25) * 60  # heavy model work is time-boxed so polling stays fresh; the rest resumes next cycle
         inbox.process_pending()
         new_ids, first = pipeline.poll()
         pipeline.instant_alerts(new_ids, first)
+        try:
+            import visa
+            visa.enrich(SETTINGS.get("visa_checks_per_cycle", 40))
+        except Exception as ex:
+            log(f"visa enrichment failed: {ex}")
         stakes.promote_triaged()
         if budget_used(c, "triage_calls") < SETTINGS["max_triage_calls_per_day"]:
             pipeline.triage()
@@ -164,6 +170,8 @@ def doctor():
 def main():
     a = sys.argv[1:]
     cmd = a[0] if a else "status"
+    if cmd in ("packet", "referral", "linkedin", "resume", "fill") and len(a) > 1:
+        common.add_pick(a[1], {"linkedin": "referral"}.get(cmd, cmd))  # the user chose this job: list it under My picks
     if cmd == "cycle":
         cycle()
     elif cmd == "poll":
@@ -191,6 +199,9 @@ def main():
         scout.run_scout(force=True)
     elif cmd == "inbox":
         import inbox
+        if len(a) > 1 and a[1] == "retry":
+            inbox.retry(a[2] if len(a) > 2 else "all")
+            return
         if len(a) > 1 and a[1] == "add":
             i = inbox.add(a[2], a[3] if len(a) > 3 else "")
             print("queued", i)
@@ -217,6 +228,9 @@ def main():
     elif cmd == "init":
         import setup
         setup.wizard()
+    elif cmd == "rescore":
+        import visa
+        print(visa.rescore_all(), "jobs rescored")
     elif cmd == "doctor":
         doctor()
     elif cmd == "gui":

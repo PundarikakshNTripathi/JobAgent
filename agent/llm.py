@@ -3,7 +3,7 @@ Every model call in JobAgent goes through run(). It (1) routes the task kind to 
 (3) falls back to another provider when one is unavailable/over budget/unsuitable, (4) gives text-only models web research by retrieving pages itself,
 (5) logs tokens, time and cost per call. Adapters: claude_cli, agy_cli (Antigravity/Gemini), codex_cli, gemini_cli, openai_compat (OpenAI, OpenRouter,
 Gemini API, Ollama, LM Studio...), anthropic_api, cli_template (Hermes, oh-my-pi, anything else)."""
-import json, os, shutil, subprocess, tempfile, time, urllib.request, urllib.error
+import json, os, re, shutil, subprocess, tempfile, time, urllib.request, urllib.error
 import common
 from common import db, log, now, DATA
 
@@ -31,11 +31,49 @@ def key_of(pdef):
     return os.environ.get(env, "") if env else ""
 
 
+QUOTA_RX = re.compile(r"(hit|reached|exceeded) your .{0,20}limit|usage limit|quota|rate.?limit|too many requests|\b429\b|resets? (at )?\d", re.I)
+
+
+def cooldown_until(name):
+    try:
+        c = db()
+        r = c.execute("SELECT v FROM meta WHERE k=?", ("cooldown:" + name,)).fetchone()
+        if r and r["v"] > now():
+            return r["v"]
+    except Exception:
+        pass
+    return None
+
+
+def _set_cooldown(name, msg):
+    """A provider reported quota exhaustion: stop calling it until its stated reset time (default 60 min)."""
+    import datetime as dt
+    until = dt.datetime.now() + dt.timedelta(minutes=60)
+    m = re.search(r"resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)", msg, re.I)
+    if m:
+        h = int(m.group(1)) % 12 + (12 if m.group(3).lower() == "pm" else 0)
+        t = dt.datetime.now().replace(hour=h, minute=int(m.group(2) or 0), second=0, microsecond=0)
+        until = t if t > dt.datetime.now() else t + dt.timedelta(days=1)
+    c = db()
+    c.execute("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", ("cooldown:" + name, until.isoformat(timespec="seconds")))
+    c.commit()
+    log(f"{name} quota exhausted; paused until {until.strftime('%H:%M')}")
+    return until
+
+
+def bg_calls_5h(provider):
+    c = db()
+    return c.execute("SELECT COUNT(*) FROM llm_log WHERE provider=? AND kind NOT IN ('chat','ingest','test','bench') AND ts>=datetime('now','-5 hours','localtime')", (provider,)).fetchone()[0]
+
+
 def available(name):
     """(ok, reason). 'ok' means the tool/key exists; it does not prove the login works (use test())."""
     p = registry().get(name)
     if not p:
         return False, "unknown provider"
+    cd = cooldown_until(name)
+    if cd:
+        return False, "quota reached; resumes " + cd[11:16]
     t = p["type"]
     if t in ("claude_cli", "agy_cli", "codex_cli", "gemini_cli"):
         return (True, which(p)) if which(p) else (False, f"'{p.get('bin')}' not found on PATH")
@@ -289,6 +327,8 @@ def _web_augment(prompt, route, o, kind):
         log(f"web plan failed ({e}); continuing without notes")
         plan = {"queries": [], "urls": []}
     notes = web.research_notes(plan.get("queries", [])[:6], plan.get("urls", [])[:4])
+    if not notes.strip():  # search engine unreachable / nothing fetched: let a provider with native web tools do this call instead
+        raise LLMError("web retrieval returned nothing (search engine unreachable); falling back to a provider with native web search")
     return prompt + ("\n\nNOTE: you have no browsing tools in this run. Use ONLY the research notes below (fetched by the pipeline). If something is not in them, say it is unverified.\n"
                      "=== RESEARCH NOTES ===\n" + (notes or "(nothing could be retrieved)"))
 
@@ -318,17 +358,23 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
         if over_budget(name):
             errors.append(f"{name}: daily budget reached")
             continue
+        bgb = common.SETTINGS["llm"].get("budgets", {}).get(name, {}).get("background_calls_per_5h")
+        if common.BACKGROUND and bgb and bg_calls_5h(name) >= bgb:
+            errors.append(f"{name}: background allowance for the last 5 hours used (kept free for you)")
+            continue
         p = prompt
         oo = dict(o)
-        if need_web and not caps.get("web"):
-            p = _web_augment(prompt, route, o, kind)
-            oo["allowed_tools"] = ""
         t0 = time.time()
         try:
+            if need_web and not caps.get("web"):
+                p = _web_augment(prompt, route, o, kind)
+                oo["allowed_tools"] = ""
             text, usage = call_provider(name, route, p, oo)
         except LLMError as e:
             errors.append(f"{name}: {e}")
             log(f"llm {kind} via {name} failed: {e}")
+            if QUOTA_RX.search(str(e)):
+                _set_cooldown(name, str(e))
             continue
         _log_usage(kind, name, route.get("model"), usage, time.time() - t0)
         if name != primary["provider"] and not provider:

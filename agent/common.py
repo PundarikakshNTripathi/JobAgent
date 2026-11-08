@@ -3,6 +3,22 @@ Core code never contains personal data: everything personal lives in the user's 
 Stdlib only on purpose (no pip needed)."""
 import json, os, re, sqlite3, subprocess, datetime as dt, urllib.request, shutil
 
+# ------------------------------------------------------------------ silent subprocesses (Windows)
+# A scheduled, windowless Python that starts console programs (claude, agy, powershell, schtasks, node...) makes Windows flash a console window for each one.
+# Creating every child with CREATE_NO_WINDOW keeps background runs completely invisible. Applied once, here, so all modules inherit it.
+if os.name == "nt":
+    _CREATE_NO_WINDOW, _DETACH_OR_NEW = 0x08000000, 0x00000008 | 0x00000010   # DETACHED_PROCESS | CREATE_NEW_CONSOLE (incompatible with NO_WINDOW)
+    _popen_init = subprocess.Popen.__init__
+
+    def _quiet_popen_init(self, *args, **kw):
+        flags = kw.get("creationflags", 0)
+        if not (flags & _DETACH_OR_NEW):
+            kw["creationflags"] = flags | _CREATE_NO_WINDOW
+        _popen_init(self, *args, **kw)
+
+    subprocess.Popen.__init__ = _quiet_popen_init
+
+
 # ------------------------------------------------------------------ paths
 CORE = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))     # the repository (public code)
 ROOT = CORE                                                               # backward-compatible alias
@@ -162,6 +178,7 @@ CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, name TEXT, org TEXT, ki
 CREATE TABLE IF NOT EXISTS inbox(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, text TEXT, context TEXT, status TEXT DEFAULT 'new', result TEXT);
 CREATE TABLE IF NOT EXISTS chat(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, role TEXT, text TEXT);
 CREATE TABLE IF NOT EXISTS referrals(job_id TEXT PRIMARY KEY, dir TEXT, at TEXT, how TEXT, state TEXT DEFAULT 'planned');
+CREATE TABLE IF NOT EXISTS picks(job_id TEXT PRIMARY KEY, ts TEXT, actions TEXT);
 CREATE TABLE IF NOT EXISTS outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, job_id TEXT, event TEXT, note TEXT);
 """
 
@@ -274,3 +291,15 @@ def extract_json(text):
 
 def slug(s, n=48):
     return re.sub(r"[^a-zA-Z0-9]+", "-", s).strip("-")[:n].lower()
+
+
+BACKGROUND = False  # set by the scheduled cycle: background work must leave headroom for interactive use (see llm.run)
+
+
+def add_pick(job_id, action):
+    """A job the USER chose to work on (clicked prepare/referral/resume/fill, or added through the inbox). Shown in 'My picks'."""
+    c = db()
+    r = c.execute("SELECT actions FROM picks WHERE job_id=?", (job_id,)).fetchone()
+    acts = sorted(set((r["actions"].split(",") if r and r["actions"] else []) + [action]))
+    c.execute("INSERT OR REPLACE INTO picks(job_id,ts,actions) VALUES(?,?,?)", (job_id, now(), ",".join(acts)))
+    c.commit()

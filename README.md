@@ -73,6 +73,7 @@ Adding a tool JobAgent doesn't know: choose provider `custom` (or Hermes / omp p
 |---|---|---|
 | Work | **Today** | headline numbers, forms waiting for you, the day's improvement plan (tick items off), outreach to do |
 | | **All jobs** | a job-board style browser over *every* tracked posting, analysed or not. Every row links straight to the employer's posting. Filters: keywords, role family, level (internship / new grad / early career / experienced), location type, visa-sponsorship signal, company tier, AI-analysed or not, company, source, first seen, minimum match, has referral plan / packet; sort and page size. Jobs the AI hasn't reviewed yet show the posting excerpt and an *Analyse & prepare* button |
+| | **My picks** | everything *you* chose to work on (pressed Prepare, Referral plan, Resume advice or Fill, or added through the Inbox), with a progress tracker per job (application, referral plan, resume advice, form filled) and a *Ready / In progress* split. Automatic work from the scheduler stays in the other lists |
 | | **Ready to submit** / **Needs you** | review filled forms and press Submit yourself; see which fields are waiting |
 | | **Prepared** / **Best matches** / **New** | one-click *Prepare application*, *Fill the form*, *Referral plan*; skip with a reason (teaches the agent) |
 | | **Applied** | what you marked applied |
@@ -153,6 +154,26 @@ Anything empty in `profile.form_defaults` is never guessed: it appears under "Ne
 Polling, filtering, de-duplication and the watchlist rules use no tokens. Headless Claude calls run in lean mode (about 0.7k input tokens overhead instead of about 27k). Browser steps (form fill, LinkedIn, YC) are the expensive ones. Every call is logged by provider and task (**Usage & cost**); set per-provider daily budgets and the agent falls back to another provider when one is exhausted. Costs shown are list-price equivalents; subscriptions are rate-limited rather than billed per token.
 
 ---
+
+### Quota-aware, and protecting your own budget
+
+If a provider reports that its usage limit is reached (for example Claude's 5-hour window), JobAgent pauses that provider until the stated reset time, shows a banner in the GUI, and falls back to another provider where it can. Inbox items are stored and wait; they retry on their own (or press *Retry*). Scheduled background work is also held to a rolling allowance (`llm.budgets.<provider>.background_calls_per_5h`) so it cannot use up the window you need for your own requests (inbox, chat, manual clicks).
+
+### Reading the full job description
+
+Job-board feeds often carry only a short intro. JobAgent fetches the full posting for promising jobs (plain HTTP, no tokens), reads the **years of experience** (digits, words, ranges: "3+", "two years", "5-7 years") and the **visa sponsorship** wording, and re-scores. Roles that need 3+ years are dismissed (4+ for "fellowships"), 2 years is penalised hard, and the model that triages jobs is told to read the requirements section. The *All jobs* view has an "experience required" filter and shows a "N+ yrs required" tag.
+
+### Abroad roles: logistics clarity ranks first
+
+For jobs outside your home country, a clear sponsorship/relocation statement ranks above an unclear one (`visa_weights` in `filters.json`); home-country and remote roles rank above abroad roles with unclear logistics. YC's explicit visa field is parsed ("Will sponsor" and "US citizenship/visa not required" are good signs, "US citizen/visa only" is not).
+
+### Silent background operation (Windows)
+
+The scheduled task runs `pythonw` and every child process (model CLIs, PowerShell toasts, `schtasks`) is created with no console window, so nothing flashes on screen while you work. The agent's Chrome starts minimized and without taking focus.
+
+### Company logos
+
+Logos are fetched by the local server (DuckDuckGo's icon service, Google's as backup) and cached in `<workspace>/data/logos`. Your browser only talks to localhost; only company domain names leave the machine. Turn off with `"ui": {"logos": false}` in settings.
 
 ## 12. Troubleshooting
 

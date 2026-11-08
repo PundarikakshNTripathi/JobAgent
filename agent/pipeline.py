@@ -86,6 +86,7 @@ Resume variants available: {variants}
 {persona}
 
 Stance: the candidate needs an offer soon and is playing a numbers game on normal-stakes roles, so be generous: prefer APPLY over STRETCH when a realistic shot exists, and STRETCH over SKIP when only a soft bar blocks them.
+READ the requirements: if the posting requires 2 or more years of professional experience (look for 'N+ years', 'minimum N years', 'at least N years'), the verdict is SKIP unless it explicitly accepts equivalent project/research experience; always state the years required in yoe_gap.
 For each posting return a verdict:
  APPLY   = realistic shot or strong upside; the requirements are plausibly met or the YOE bar is soft.
  STRETCH = worth a referral-led attempt only (hard bar but not impossible).
@@ -99,10 +100,20 @@ POSTINGS
 """
 
 
+def _excerpt(desc, n):
+    """Intro + the requirements/qualifications section, because years of experience live there."""
+    d = desc or ""
+    if len(d) <= n:
+        return d
+    m = re.search(r"(minimum qualifications|basic qualifications|requirements|qualifications|what you.ll need|what we.re looking for|you have|you bring|who you are)", d[300:], re.I)
+    head = d[:min(500, n // 3)]
+    return head + " ... " + (d[300 + m.start():300 + m.start() + (n - len(head) - 5)] if m else d[len(head):n])
+
+
 def _fmt(r):
     return (f"id={r['id']}\ncompany={r['company']} (tier {r['tier']}, {r['category']})\ntitle={r['title']}\nlocation={r['location']}\n"
             f"url={r['url']}\nposted={r['posted']}\nheuristic_family={r['family']} early_career={bool(r['early'])} min_yoe_seen={r['yoe']}\n"
-            f"description_excerpt={(r['desc'] or '(none in feed; judge by title/company)')[:SETTINGS.get('triage_desc_chars', 900)]}\n")
+            f"description_excerpt={_excerpt(r['desc'] or '(none in feed; judge by title/company)', SETTINGS.get('triage_desc_chars', 1600))}\n")
 
 
 def triage(max_jobs=None):

@@ -30,13 +30,19 @@ def classify_location(loc):
 
 
 VISA_NO = [r"no (visa )?sponsorship", r"(not|unable to|cannot|can.t|won.t|will not) (be able to )?(offer |provide )?(visa )?sponsor", r"does not (offer|provide) (visa )?sponsorship",
-           r"without (the need for )?(visa )?sponsorship", r"u\.?s\.? citizen", r"citizens? only", r"citizenship is required", r"security clearance", r"visa only",
+           r"without (the need for )?(visa )?sponsorship", r"u\.?s\.? citizen(?!ship/visa not required)", r"citizens? only", r"citizenship is required", r"security clearance", r"visa only",
            r"must (currently )?(be )?(legally )?(authori[sz]ed|eligible) to work in the (u\.?s|united states|uk|canada)"]
-VISA_YES = [r"will sponsor", r"offers? (visa )?sponsorship", r"visa sponsorship (is )?(available|provided|offered)", r"we (can |do )?sponsor", r"sponsorship (is )?(available|provided)", r"relocation (assistance|support|package)"]
+VISA_YES = [r"will sponsor", r"offers? (visa )?sponsorship", r"visa sponsorship (is )?(available|provided|offered)", r"we (can |do )?sponsor", r"sponsorship (is )?(available|provided)",
+            r"relocation (assistance|support|package|bonus|allowance)", r"visa (support|assistance)", r"(h-?1b|o-?1|l-?1|skilled worker|blue card|work permit)[^.]{0,40}(sponsor|support|provide)",
+            r"(sponsor|support|provide)[^.]{0,40}(h-?1b|work permit|work visa|skilled worker|blue card)", r"international (candidates|applicants|students) (are )?(welcome|encouraged|eligible)",
+            r"open to (candidates|applicants) (from|outside)", r"citizenship/visa not required"]
 
 
 def visa_status(text):
     t = (text or "").lower().replace("’", "'")
+    m = re.search(r"visa: (will sponsor|us citizenship/visa not required|us citizen/visa only)", t)  # YC's explicit field wins
+    if m:
+        return "no" if "only" in m.group(1) else "yes"
     if _any(VISA_NO, t) and not re.search(r"will sponsor|offers? sponsorship", t):
         return "no"
     if _any(VISA_YES, t):
@@ -44,16 +50,25 @@ def visa_status(text):
     return "unknown"
 
 
+_NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+_NUMRX = r"(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)"
+
+
+def _n(s):
+    return int(s) if s.isdigit() else _NUM.get(s.lower(), 0)
+
+
 def min_yoe(text):
-    """Smallest 'N years' requirement mentioned near 'experience'. None if no mention."""
+    """Smallest 'N years of experience' requirement mentioned in the posting (digits or words, ranges, 'minimum/at least'). None if none found."""
     vals = []
     ym = re.search(r"min experience: (\d{1,2})", text, re.I)
     if ym:
         vals.append(int(ym.group(1)))
-    for m in re.finditer(r"(\d{1,2})\s*\+?\s*(?:[-–to]+\s*\d{1,2}\s*)?(?:years?|yrs?)(?:\s+of)?[^.]{0,60}?(?:experience|exp)", text, re.I):
-        vals.append(int(m.group(1)))
-    for m in re.finditer(r"(?:experience|minimum|at least)[^.]{0,40}?(\d{1,2})\s*\+?\s*(?:years?|yrs?)", text, re.I):
-        vals.append(int(m.group(1)))
+    for m in re.finditer(_NUMRX + r"\s*\+?\s*(?:(?:-|to|–)\s*" + _NUMRX + r"\s*)?(?:\+\s*)?(?:years?|yrs?)(?:'|’)?(?:\s+of)?[^.\n]{0,70}?(?:experience|exp\b|background|working|industry)", text, re.I):
+        vals.append(_n(m.group(1)))
+    for m in re.finditer(r"(?:experience|minimum|at least|min\.?|requires?)[^.\n]{0,50}?" + _NUMRX + r"\s*\+?\s*(?:years?|yrs?)", text, re.I):
+        vals.append(_n(m.group(1)))
+    vals = [v for v in vals if 0 < v <= 20]
     return min(vals) if vals else None
 
 
@@ -83,6 +98,11 @@ def score(job):
     s = base
     if early:
         s += 22
+        if yoe is not None and yoe >= 4:      # a "fellowship"/"program" that wants 4+ years is not an early-career role for this candidate
+            r["drop"] = f"needs {yoe}+ yrs"
+            return r
+        if yoe is not None and yoe >= 3:
+            s -= 20
     elif yoe is not None and yoe <= 1 and job["ats"] == "yc":
         s += 14  # YC startups asking for 0-1 years are exactly the lenient-bar targets
     elif yoe is not None:
@@ -90,7 +110,7 @@ def score(job):
             r["drop"] = f"needs {yoe}+ yrs"
             return r
         if yoe >= F["yoe_penalty_at"]:
-            s -= 18
+            s -= 30
     else:
         s -= 6  # unknown seniority, not marked early-career
     r["visa"] = visa_status(desc + " " + job["location"])
@@ -99,12 +119,13 @@ def score(job):
         r["drop"] = "location not realistic (needs local work permit)"
         return r
     if r["loc_class"] == "relocate" and r["visa"] != "yes" and re.search(r"\bintern|co-?op|apprentice", title) and re.search(r"\b(usa|united states|canada|united kingdom|uk)\b|, (ca|ny|wa|tx|ma)\b", loc_l + " "):
-        s -= 10  # in-country enrolment / right-to-work is usually required for these internships
+        s += F.get('visa_weights', {}).get('us_uk_ca_intern_without_sponsorship', -10)  # in-country enrolment / right-to-work is usually required
     s += TIER_BOOST.get(job.get("_tier", "C"), 0)
+    vw = F.get("visa_weights", {})
     if r["loc_class"] == "relocate":
-        s += {"no": -25, "yes": 5, "unknown": 0}[r["visa"]]
+        s += vw.get("relocate_" + r["visa"], {"no": -25, "yes": 15, "unknown": -10}[r["visa"]])  # abroad: clear logistics rank up, unclear ones down
     elif r["loc_class"] == "remote" and r["visa"] == "no":
-        s -= 15
+        s += vw.get("remote_no", -15)
     s += {"india": 14, "remote": 9, "relocate": -6}[r["loc_class"]]
     s += min(14, 2 * _count(F["niche_keywords"], title + " " + desc[:3000]))
     try:

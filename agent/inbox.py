@@ -2,9 +2,11 @@
 together with their own context. The agent extracts the opportunities, fetches the pages, triages them against the profile (user-sourced items get priority),
 and, for the promising ones, prepares the packet and the referral plan right away. Works with any provider."""
 import hashlib, json, re
+import common
 from common import db, log, now, extract_json, COMPANIES, PROFILE
 import memory, scoring, web
 from llm import run
+import llm as llm_mod
 
 EXTRACT = """The user found the material below (links, pasted job text, messages, notes) and wants it handled as job opportunities.
 
@@ -28,11 +30,23 @@ def _tier(company):
     return "B", "manual"
 
 
+def _split(text):
+    """One inbox row per opportunity when the paste is a list of links (so a failure never loses the others)."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    link_lines = [ln for ln in lines if re.search(r"https?://", ln)]
+    if len(link_lines) >= 2 and len(link_lines) >= len(lines) * 0.6:
+        return link_lines
+    return [text]
+
+
 def add(text, context=""):
     c = db()
-    cur = c.execute("INSERT INTO inbox(ts,text,context,status) VALUES(?,?,?, 'new')", (now(), text, context))
+    ids = []
+    for part in _split(text):
+        cur = c.execute("INSERT INTO inbox(ts,text,context,status) VALUES(?,?,?, 'new')", (now(), part, context))
+        ids.append(cur.lastrowid)
     c.commit()
-    return cur.lastrowid
+    return ids[0] if len(ids) == 1 else ids
 
 
 def process(item_id, build=True):
@@ -48,8 +62,15 @@ def process(item_id, build=True):
     for u in urls:
         t, body = web.fetch_text(u, 3500)
         pages.append(f"URL {u}\nTITLE {t}\n{body}")
-    text, _ = run(EXTRACT.format(ctx=row["context"] or "(none)", blob=blob[:6000], pages="\n\n".join(pages)[:14000] or "(no links)"), kind="ingest", timeout=300, max_turns=2)
-    items = extract_json(text)
+    try:
+        text, _ = run(EXTRACT.format(ctx=row["context"] or "(none)", blob=blob[:6000], pages="\n\n".join(pages)[:14000] or "(no links)"), kind="ingest", timeout=300, max_turns=2)
+        items = extract_json(text)
+    except Exception as e:
+        quota = bool(llm_mod.QUOTA_RX.search(str(e)))
+        c.execute("UPDATE inbox SET status=?, result=? WHERE id=?", ("waiting" if quota else "error", json.dumps({"error": str(e)[:300], "retry": "automatic when the model quota resets" if quota else "press Retry"}), item_id))
+        c.commit()
+        log(f"inbox #{item_id} {'waiting for quota' if quota else 'failed'}: {str(e)[:120]}")
+        return None
     result = []
     new_ids = []
     for it in items if isinstance(items, list) else []:
@@ -73,6 +94,8 @@ def process(item_id, build=True):
                       (jid, it.get("company") or "?", tier, cat or "manual", it.get("title") or "(untitled)", it.get("location", ""), it.get("url") or "", "manual", "", now(), now(),
                        96.0, sc["loc_class"], sc["family"] or "ai_research", 1, sc["yoe"], desc, sc["visa"]))
             new_ids.append(jid)
+        c.commit()  # release the write lock before add_pick() uses its own connection
+        common.add_pick(jid, "inbox")
         result.append({"id": jid, "company": it.get("company"), "title": it.get("title"), "url": it.get("url"), "kind": it.get("kind"), "new": not existing})
     c.commit()
     if new_ids:
@@ -99,7 +122,10 @@ def process(item_id, build=True):
 
 
 def pending():
-    return [r["id"] for r in db().execute("SELECT id FROM inbox WHERE status='new' ORDER BY id").fetchall()]
+    """Items to (re)try: new ones, and ones that were waiting for quota or errored, once the provider is available again."""
+    ok = any(llm_mod.available(p)[0] for p in ("claude", "agy", "codex", "gemini", "openai", "anthropic", "openrouter", "gemini_api", "ollama"))
+    st = "('new','waiting','error')" if ok else "('new')"
+    return [r["id"] for r in db().execute(f"SELECT id FROM inbox WHERE status IN {st} ORDER BY id").fetchall()]
 
 
 def process_pending():
@@ -111,6 +137,36 @@ def process_pending():
             c.execute("UPDATE inbox SET status='error', result=? WHERE id=?", (json.dumps({"error": str(e)[:300]}), i))
             c.commit()
             log(f"inbox #{i} failed: {e}")
+
+
+def retry(which="all"):
+    c = db()
+    if which == "all":
+        c.execute("UPDATE inbox SET status='new' WHERE status IN ('waiting','error')")
+    else:
+        c.execute("UPDATE inbox SET status='new' WHERE id=?", (int(which),))
+    c.commit()
+    process_pending()
+
+
+def summary(limit=12):
+    """Text for the agent's context so chat and tools can see the inbox (what is queued, done, failed, waiting)."""
+    rows = db().execute("SELECT id, status, substr(text,1,140) t, result FROM inbox ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    if not rows:
+        return "INBOX: empty"
+    out = ["INBOX (items the user pasted; statuses: new=queued, waiting=quota, error, done):"]
+    for r in rows:
+        extra = ""
+        try:
+            x = json.loads(r["result"] or "null")
+            if isinstance(x, list):
+                extra = " -> " + "; ".join(f"{o.get('company')} {str(o.get('title'))[:40]} [{o.get('verdict') or 'untriaged'}]" for o in x[:3])
+            elif isinstance(x, dict):
+                extra = " -> " + str(x.get("error", ""))[:110]
+        except ValueError:
+            pass
+        out.append(f"  #{r['id']} {r['status']}: {r['t']}{extra}")
+    return "\n".join(out)
 
 
 # ------------------------------------------------------------------ chat
@@ -135,7 +191,7 @@ RECENT CHAT
 USER: {text}
 JOBAGENT:"""
 
-ALLOWED_ACTIONS = ("packet", "referral", "mark", "remember", "ingest", "agent")
+ALLOWED_ACTIONS = ("packet", "referral", "mark", "remember", "ingest", "agent", "retry-inbox")
 
 
 def snapshot():
@@ -144,6 +200,7 @@ def snapshot():
                        WHERE j.active=1 AND j.status NOT IN ('skipped','applied','ineligible') ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 12""").fetchall()
     watch = c.execute("SELECT j.id,j.company,j.title FROM watch w JOIN jobs j ON j.id=w.job_id WHERE j.status='watch' LIMIT 8").fetchall()
     lines = ["TOP MATCHES: " + "; ".join(f"[{r['id']}] {r['company']} - {r['title'][:50]} ({r['verdict'] or 'untriaged'} {int(r['fit'] or 0)}, {r['status']})" for r in top)]
+    lines.append(summary())
     lines.append("WATCHLIST: " + "; ".join(f"[{r['id']}] {r['company']} - {r['title'][:40]}" for r in watch))
     return "\n".join(lines)
 
@@ -157,7 +214,7 @@ def reply(text):
     actions = []
     body = []
     for ln in out.splitlines():
-        m = re.match(r"\s*ACTION:\s*(\w+)\s*(.*)", ln)
+        m = re.match(r"\s*ACTION:\s*([\w-]+)\s*(.*)", ln)
         if m and m.group(1) in ALLOWED_ACTIONS:
             actions.append((m.group(1), m.group(2).strip()))
         else:

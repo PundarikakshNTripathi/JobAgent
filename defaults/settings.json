@@ -5,7 +5,7 @@
   "max_triage_calls_per_day": 10,
   "triage_batch_size": 12,
   "max_triage_per_cycle": 36,
-  "triage_desc_chars": 1000,
+  "triage_desc_chars": 1600,
   "max_packets_per_day": 8,
   "packet_min_fit": 50,
   "max_referrals_per_day": 12,
@@ -199,5 +199,6 @@
   ],
   "cycle_minutes_budget": 25,
   "packets_per_cycle": 4,
-  "referrals_per_cycle": 6
+  "referrals_per_cycle": 6,
+  "visa_checks_per_cycle": 40
 }

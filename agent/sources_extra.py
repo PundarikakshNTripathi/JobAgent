@@ -13,11 +13,17 @@ def _text(s, n=4000):
 
 # ------------------------------------------------------------------ YC
 YC_ROLES = ["machine-learning-engineer", "ai-engineer", "research-engineer", "research-scientist", "data-scientist",
-            "software-engineer", "backend-engineer", "full-stack-engineer", "intern", "founding-engineer", "robotics-engineer"]
-YC_LOCS = ["", "/remote"]
+            "software-engineer", "backend-engineer", "full-stack-engineer", "intern", "founding-engineer", "robotics-engineer", "devops-engineer", "data-engineer"]
+YC_LOCS = ["", "/remote", "/india", "/san-francisco", "/new-york", "/seattle", "/boston", "/austin", "/los-angeles", "/london"]
 
 
 def yc_jobs():
+    from common import db, meta_get, meta_set, now
+    c = db()
+    last = meta_get(c, "last_yc")
+    if last and (dt.datetime.now() - dt.datetime.fromisoformat(last)).total_seconds() < 6 * 3600:
+        return []  # YC pages are large; refresh every 6 hours
+    meta_set(c, "last_yc", now())
     out, seen = [], set()
     for role in YC_ROLES:
         for loc in YC_LOCS:

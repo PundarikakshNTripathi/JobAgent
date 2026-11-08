@@ -9,6 +9,7 @@ TAG = re.compile(r"<[^>]+>")
 
 def clean(s, n=6000):
     s = html.unescape(TAG.sub(" ", s or ""))
+    s = html.unescape(TAG.sub(" ", s))  # double-escaped content ("&lt;p&gt;") from some boards
     return re.sub(r"\s+", " ", s).strip()[:n]
 
 

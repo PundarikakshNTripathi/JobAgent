@@ -60,6 +60,11 @@ def context_pack(extra=""):
     m = memory_text()
     if m:
         out.append("LEARNED MEMORY:\n" + m)
+    try:
+        import inbox
+        out.append(inbox.summary(8))
+    except Exception:
+        pass
     if extra:
         out.append(extra)
     return "\n".join(out)
@@ -123,6 +128,7 @@ def persona():
         f"Availability: {pr.get('availability','')}" if pr.get("availability") else "",
         f"Pay/prestige stance: {pr.get('pay_policy','')}" if pr.get("pay_policy") else "",
         f"Visa reality: roles outside {home} normally need employer sponsorship or student status there (e.g. US CPT/J-1 internships). Prefer roles open to candidates based in {home} or remote-global; "
-        "mark relocation roles APPLY only if the posting or company clearly sponsors international candidates, otherwise STRETCH with flag 'visa'; skip roles that need a local work permit the candidate cannot get.",
+        "mark relocation roles APPLY only if the posting or company clearly sponsors international candidates, otherwise STRETCH with flag 'visa'; skip roles that need a local work permit the candidate cannot get. "
+        "Logistics clarity matters: abroad roles with explicit sponsorship/relocation/visa support (including startups, neolabs, frontier labs, research and academic institutes, big tech) outrank abroad roles with unclear logistics; home-country and remote roles outrank unclear abroad roles.",
         "Wants lenient years-of-experience bars: internships, new-grad, residencies, fellowships and early-career-friendly roles.",
     ]))

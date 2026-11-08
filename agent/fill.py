@@ -110,8 +110,14 @@ def ensure_chrome():
         raise RuntimeError("Chrome/Edge not found")
     prof = SETTINGS.get("chrome_profile_dir") or os.path.join(DATA, "chrome-profile")
     os.makedirs(prof, exist_ok=True)
-    subprocess.Popen([exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check", "about:blank"],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    kw = {}
+    if os.name == "nt":  # start minimized and without activating, so a background fill never steals focus
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+        kw["startupinfo"] = si
+    subprocess.Popen([exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check", "--start-minimized", "about:blank"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
     for _ in range(40):
         if _port_open():
             return True

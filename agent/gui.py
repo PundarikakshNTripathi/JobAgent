@@ -9,7 +9,7 @@ RUN_PY = os.path.join(CORE, "agent", "run.py")
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui_static", "index.html")
 # command -> needs an argument?
 ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "today": False, "dashboard": False, "usage": False, "yc-profile": False, "inbox": False,
-           "reflect": False, "bench": False, "enable-schedule": False, "disable-schedule": False, "packet": True, "referral": True, "resume": True, "fill": True,
+           "reflect": False, "bench": False, "inbox-retry": False, "enable-schedule": False, "disable-schedule": False, "packet": True, "referral": True, "resume": True, "fill": True,
            "linkedin": True, "mark": True, "agent": True}
 SETTING_KEYS = {"poll_every_minutes", "min_heuristic_score_for_llm", "instant_alert_score", "max_triage_calls_per_day", "triage_batch_size", "max_triage_per_cycle", "triage_desc_chars",
                 "max_packets_per_day", "packet_min_fit", "max_referrals_per_day", "max_linkedin_per_day", "linkedin_browse", "max_fills_per_day", "auto_fill", "fill_window_local_hours",
@@ -43,7 +43,7 @@ def packet_files(job_id):
 
 def state():
     c = db()
-    rows = c.execute("""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.score,j.loc_class,j.visa,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,
+    rows = c.execute("""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.score,j.loc_class,j.visa,j.yoe,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,
                                p.dir,w.note watch_note, (SELECT 1 FROM referrals r WHERE r.job_id=j.id) has_ref
                         FROM jobs j LEFT JOIN triage t ON t.job_id=j.id LEFT JOIN packets p ON p.job_id=j.id LEFT JOIN watch w ON w.job_id=j.id
                         WHERE j.active=1 AND j.status NOT IN ('skipped','dismissed','ineligible') AND (j.status!='new' OR j.score>=65)
@@ -55,7 +55,7 @@ def state():
     return {"jobs": [dict(r) for r in rows], "programs": [dict(r) for r in progs], "last_poll": meta_get(c, "last_poll"), "setup_needed": common.needs_setup(),
             "active": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0], "running": running, "day": dt.date.today().isoformat(), "plan": jread("today.json", None),
             "budget": {k: budget_used(c, k) for k in ("triage_calls", "packets", "referrals", "fills", "scout", "linkedin")},
-            "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME}
+            "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME, "cooldowns": cooldowns()}
 
 
 def _csv(q, k):
@@ -71,7 +71,7 @@ def browse_jobs(q):
     if status:
         w.append("j.status IN (%s)" % ",".join("?" * len(status.split(","))))
         a += status.split(",")
-    elif one("hidden") != "1":
+    elif one("hidden") != "1" and not one("id"):
         w.append("j.status NOT IN ('skipped','dismissed','ineligible')")
     for term in one("q").lower().split():
         w.append("(lower(j.company) LIKE ? OR lower(j.title) LIKE ? OR lower(j.location) LIKE ?)")
@@ -81,6 +81,12 @@ def browse_jobs(q):
         if vals:
             w.append(f"{col} IN ({','.join('?' * len(vals))})")
             a += vals
+    if one("id"):
+        w.append("j.id=?")
+        a.append(one("id"))
+    if one("maxyoe") != "":
+        w.append("(j.yoe IS NULL OR j.yoe<=?)")
+        a.append(int(one("maxyoe")))
     if one("company"):
         w.append("lower(j.company) LIKE ?")
         a.append(f"%{one('company').lower()}%")
@@ -118,9 +124,12 @@ def browse_jobs(q):
     base = f"FROM jobs j LEFT JOIN triage t ON t.job_id=j.id WHERE {' AND '.join(w)}"
     total = c.execute(f"SELECT COUNT(*) {base}", a).fetchone()[0]
     rows = c.execute(f"""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.posted,j.first_seen,j.score,j.loc_class,j.family,j.early,j.yoe,j.visa,j.status,j.category,
-                                substr(j.desc,1,700) snippet,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,{hr} has_ref,(EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)) has_packet,
+                                substr(j.desc,1,900) snippet,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,{hr} has_ref,(EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)) has_packet,
                                 (t.job_id IS NOT NULL) analysed {base} ORDER BY {order} LIMIT ? OFFSET ?""", (*a, per, (page - 1) * per)).fetchall()
-    return {"total": total, "page": page, "per": per, "items": [dict(r) for r in rows]}
+    items = [dict(r) for r in rows]
+    for it in items:
+        it["snippet"] = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", it.get("snippet") or "")).strip()[:600]
+    return {"total": total, "page": page, "per": per, "items": items}
 
 
 def job_facets():
@@ -128,6 +137,30 @@ def job_facets():
     g = lambda col, lim=15: [[r[0] or "(none)", r[1]] for r in c.execute(f"SELECT {col}, COUNT(*) n FROM jobs WHERE active=1 GROUP BY {col} ORDER BY n DESC LIMIT {lim}").fetchall()]
     return {"family": g("family"), "loc": g("loc_class"), "tier": g("tier"), "source": g("ats", 20), "visa": g("visa"), "company": g("company", 60),
             "category": g("category", 15), "total": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0]}
+
+
+def cooldowns():
+    import llm
+    return {n: cd[11:16] for n in llm.registry() for cd in [llm.cooldown_until(n)] if cd}
+
+
+def picks_info():
+    """Jobs the user chose to work on manually (prepare / referral / resume / fill clicks, or the inbox), with how far each one is."""
+    c = db()
+    out = []
+    for r in c.execute("""SELECT p.job_id, p.ts, p.actions, j.company, j.title, j.location, j.url, j.score, j.tier, j.status, j.visa, j.yoe, j.loc_class, t.verdict, t.fit,
+                                 pk.dir pdir, pk.filled_at, pk.referral_at, rf.dir rdir
+                          FROM picks p JOIN jobs j ON j.id=p.job_id LEFT JOIN triage t ON t.job_id=p.job_id LEFT JOIN packets pk ON pk.job_id=p.job_id LEFT JOIN referrals rf ON rf.job_id=p.job_id
+                          ORDER BY p.ts DESC LIMIT 200""").fetchall():
+        d = r["pdir"] or r["rdir"]
+        has = {"packet": bool(r["pdir"]), "referral": bool(r["rdir"] or r["referral_at"]), "resume": bool(d and os.path.exists(os.path.join(d, "RESUME.md"))), "fill": bool(r["filled_at"])}
+        want = [a for a in (r["actions"] or "").split(",") if a in has]
+        if not want and r["verdict"] in ("APPLY", "STRETCH"):
+            want = ["packet", "referral"]  # added via the inbox and worth pursuing: the agent should prepare both
+        done = all(has[a] for a in want) if want else True
+        out.append({"id": r["job_id"], "ts": r["ts"], "company": r["company"], "title": r["title"], "location": r["location"], "url": r["url"], "score": r["score"], "tier": r["tier"],
+                    "status": r["status"], "visa": r["visa"], "yoe": r["yoe"], "loc_class": r["loc_class"], "verdict": r["verdict"], "fit": r["fit"], "wanted": want, "has": has, "ready": done})
+    return out
 
 
 def providers_info():
@@ -166,7 +199,10 @@ def schedule_info():
 
 
 def spawn(cmd, arg=""):
-    args = [sys.executable, RUN_PY, cmd] + (arg.split() if cmd == "mark" else ([arg] if arg else []))
+    if cmd == "inbox-retry":
+        args = [sys.executable, RUN_PY, "inbox", "retry", arg or "all"]
+    else:
+        args = [sys.executable, RUN_PY, cmd] + (arg.split() if cmd == "mark" else ([arg] if arg else []))
     key = f"{cmd} {arg[:30]}".strip()
     with _lock:
         p = JOBS.get(key)
@@ -219,6 +255,33 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._send(200, page(), "text/html")
             if path == "/api/state":
                 return self._j(state())
+            if path == "/logo":
+                import logos
+                res = logos.logo_for((q.get("c") or [""])[0], (q.get("u") or [""])[0])
+                if not res:
+                    self.send_response(204)  # no logo: the page shows the company initial (204 keeps the browser console quiet)
+                    self.send_header("Cache-Control", "public, max-age=3600")
+                    self.end_headers()
+                    return
+                b, ctype = res
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(b)))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(b)
+                return
+            if path in ("/favicon.svg", "/favicon.ico"):
+                b = open(os.path.join(os.path.dirname(STATIC), "favicon.svg"), "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/svg+xml")
+                self.send_header("Content-Length", str(len(b)))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(b)
+                return
+            if path == "/api/picks":
+                return self._j(picks_info())
             if path == "/api/jobs":
                 return self._j(browse_jobs(q))
             if path == "/api/facets":
@@ -271,6 +334,8 @@ class H(http.server.BaseHTTPRequestHandler):
                     return self._j({"error": "command not allowed"}, 400)
                 if ALLOWED[cmd] and not arg:
                     return self._j({"error": "needs an argument"}, 400)
+                if cmd in ("packet", "referral", "resume", "fill", "linkedin"):
+                    common.add_pick(arg.split()[0], {"linkedin": "referral"}.get(cmd, cmd))
                 return self._j(spawn(cmd, arg))
             if path == "/api/open":
                 p = os.path.abspath(str(d.get("path", "")))
