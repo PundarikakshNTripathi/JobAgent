@@ -9,6 +9,7 @@ import json, os, socket, subprocess, time, urllib.request
 from common import db, log, now, run_claude, extract_json, DATA, SETTINGS, PROFILE, budget_add, notify
 
 PORT = SETTINGS["chrome_debug_port"]
+ACCOUNT_WALLS = ("myworkdayjobs.com", "icims.com", "taleo.net", "successfactors", "oraclecloud.com/hcmui", "smartrecruiters.com/oneclick")
 CHROME_CANDIDATES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
                      r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
@@ -65,7 +66,7 @@ ABSOLUTE RULES
 - Do not create accounts, set passwords, solve CAPTCHAs, or complete email/phone verification. If the form requires any of that before it can be filled, stop and report BLOCKED with the URL and exact reason.
 - Only enter facts that appear below. Never invent. Legal attestations and eligibility declarations (export-control/citizenship statements, "I certify", background-check consent, prior-employer or relative disclosures, AI-policy acknowledgements, "do you meet the requirements") must NOT be inferred or ticked by you: leave them unanswered and list them in needs_user, unless the exact answer is literally stated in the candidate data (work authorization in India = yes; needs sponsorship outside India = yes). If a required field needs information not given (salary, exact dates, EEO/demographics other than 'decline', AI-tool-use disclosure, references, etc.), leave it blank and list it in needs_user. For EEO/demographic/veteran/disability questions choose the decline-to-answer option.
 - Open the application in a NEW tab (browser_tabs action=new) so earlier tabs stay open. Leave this tab open at the end.
-- Dropdown/autocomplete tips: for a School/University list that lacks the candidate's school, choose "Other"/"Not listed" if offered, else leave blank and report. For location autocompletes, type only the city ("Your City"), wait for suggestions, then CLICK the matching suggestion (do not just press Enter); re-snapshot to confirm the field committed. Education start year is in the candidate data; if a month is required and unknown, leave it and report.
+- Dropdown/autocomplete tips: for a School/University list that lacks the candidate's school, choose "Other"/"Not listed" if offered, else leave blank and report. For location autocompletes, type only the city name from the candidate data, wait for suggestions, then CLICK the matching suggestion (do not just press Enter); re-snapshot to confirm the field committed. Education start year is in the candidate data; if a month is required and unknown, leave it and report.
 - Stay efficient: use browser_snapshot, browser_fill_form, browser_type, browser_select_option, browser_click, browser_file_upload. Budget about 40 tool calls. Re-snapshot at the end and verify required fields are filled and nothing shows a validation error.
 
 JOB: {company} - {title}
@@ -107,7 +108,7 @@ def ensure_chrome():
     exe = next((p for p in CHROME_CANDIDATES if os.path.exists(p)), None)
     if not exe:
         raise RuntimeError("Chrome/Edge not found")
-    prof = os.path.join(DATA, "chrome-profile")
+    prof = SETTINGS.get("chrome_profile_dir") or os.path.join(DATA, "chrome-profile")
     os.makedirs(prof, exist_ok=True)
     subprocess.Popen([exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check", "about:blank"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -137,6 +138,16 @@ def fill_job(job_id):
     if not (job and pk):
         raise ValueError("no packet for this job; run `packet` first")
     data = json.load(open(os.path.join(pk["dir"], "packet.json"), encoding="utf-8"))["packet"]
+    if any(h in (job["url"] or "").lower() for h in ACCOUNT_WALLS):
+        rep = {"status": "BLOCKED", "filled": [], "needs_user": ["This employer's application system requires you to create an account or sign in first, which the agent never does. Apply manually: the packet has your cover letter, answers and resume."],
+               "blocker": "account required (Workday/iCIMS/Taleo-style system)", "submit_button_label": "", "page_url": job["url"]}
+        c.execute("UPDATE packets SET filled_at=?, fill_report=? WHERE job_id=?", (now(), json.dumps(rep), job_id))
+        c.execute("UPDATE jobs SET status='fill-blocked' WHERE id=?", (job_id,))
+        c.commit()
+        with open(os.path.join(pk["dir"], "FILL_REPORT.md"), "w", encoding="utf-8") as f:
+            f.write(f"# Fill report ({now()})\nstatus: **BLOCKED**\n\n" + rep["needs_user"][0] + "\n")
+        log(f"fill skipped (account wall): {job['company']} | {job['title']}")
+        return rep
     ensure_chrome()
     until = int((time.time() + SETTINGS["guard_minutes"] * 60) * 1000)
     guard = os.path.join(DATA, "guard.js")
@@ -152,7 +163,7 @@ def fill_job(job_id):
                                 answers=json.dumps(data.get("answers", {}), indent=1), formq=json.dumps(data.get("form_questions", []), indent=1))
     log(f"filling {job['company']} | {job['title']} ...")
     timeout = min(SETTINGS["fill_timeout_s"], SETTINGS["guard_minutes"] * 60 - 60)
-    text, _ = run_claude(prompt, kind="fill", allowed_tools="mcp__fillbrowser", model=SETTINGS.get("claude_model_fill", "sonnet"), timeout=timeout, max_turns=70,
+    text, _ = run_claude(prompt, kind="fill", allowed_tools="mcp__fillbrowser", timeout=timeout, max_turns=70,
                          mcp_config=mcp_path, persist=True)
     try:
         rep = extract_json(text)

@@ -43,7 +43,7 @@ def build(force=False):
                                hours=PROFILE["preferences"]["daily_improvement_hours"], minutes=PROFILE["preferences"]["daily_improvement_hours"] * 60, gaps="; ".join(f"{g} ({n})" for g, n in gaps_counter(c)) or "none yet",
                                watch="; ".join(f"{w['company']} - {w['title'][:50]} ({w['referral_state']})" for w in watch) or "none",
                                done=meta_get(c, "done_tasks", "none")[:400])
-        text, _ = run_claude(prompt, kind="today", model=SETTINGS.get("today_model", "haiku"), timeout=180, max_turns=2)
+        text, _ = run_claude(prompt, kind="today", timeout=180, max_turns=2)
         plan = extract_json(text)
         json.dump(plan, open(os.path.join(OUT, "today.json"), "w", encoding="utf-8"), indent=1)
         meta_set(c, "today_date", day)

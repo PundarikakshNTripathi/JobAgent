@@ -1,0 +1,64 @@
+{
+  "_note": "Provider registry. type = adapter. capabilities: text (always), web (native search/fetch tool), browser (can drive an MCP browser for form filling). 'verified' says whether this adapter was exercised against the real tool; others follow the vendor docs and should be checked with: run.py providers test <name>. Anything not listed can be added as type cli_template.",
+  "providers": {
+    "claude": {
+      "label": "Claude Code (subscription)", "type": "claude_cli", "bin": "claude", "verified": true,
+      "capabilities": {"web": true, "browser": true},
+      "models": ["haiku", "sonnet", "opus", "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"],
+      "efforts": ["low", "medium", "high", "xhigh", "max"]
+    },
+    "agy": {
+      "label": "Google Antigravity CLI (Gemini)", "type": "agy_cli", "bin": "agy", "verified": true,
+      "capabilities": {"web": false, "browser": false},
+      "models": [], "models_from": "agy models", "efforts": ["low", "medium", "high", "xhigh", "max"], "max_prompt_chars": 28000,
+      "note": "Headless runs auto-deny tools (web/MCP) unless permission rules are configured; JobAgent therefore uses it for text tasks and feeds it pre-fetched web notes."
+    },
+    "codex": {
+      "label": "OpenAI Codex CLI", "type": "codex_cli", "bin": "codex", "verified": false,
+      "capabilities": {"web": false, "browser": false}, "models": ["gpt-5.4", "gpt-5.4-mini"], "efforts": ["low", "medium", "high"]
+    },
+    "gemini": {
+      "label": "Gemini CLI", "type": "gemini_cli", "bin": "gemini", "verified": false,
+      "capabilities": {"web": false, "browser": false}, "models": [], "efforts": []
+    },
+    "openai": {
+      "label": "OpenAI API (or any OpenAI-compatible endpoint)", "type": "openai_compat", "verified": false,
+      "base_url": "https://api.openai.com/v1", "api_key_env": "OPENAI_API_KEY", "capabilities": {"web": false, "browser": false},
+      "models": ["gpt-5.4", "gpt-5.4-mini"], "efforts": ["low", "medium", "high"]
+    },
+    "openrouter": {
+      "label": "OpenRouter", "type": "openai_compat", "verified": false,
+      "base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY", "capabilities": {"web": false, "browser": false}, "models": [], "efforts": []
+    },
+    "gemini_api": {
+      "label": "Gemini API (OpenAI-compatible endpoint)", "type": "openai_compat", "verified": false,
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "api_key_env": "GEMINI_API_KEY", "capabilities": {"web": false, "browser": false}, "models": [], "efforts": ["low", "medium", "high"]
+    },
+    "ollama": {
+      "label": "Ollama (local models)", "type": "openai_compat", "verified": false,
+      "base_url": "http://localhost:11434/v1", "api_key_env": "", "capabilities": {"web": false, "browser": false}, "models": [], "efforts": []
+    },
+    "anthropic": {
+      "label": "Anthropic API", "type": "anthropic_api", "verified": false,
+      "api_key_env": "ANTHROPIC_API_KEY", "capabilities": {"web": false, "browser": false}, "models": ["claude-sonnet-5-5", "claude-haiku-5-5"], "efforts": []
+    },
+    "hermes": {
+      "label": "Hermes Agent (Nous Research)", "type": "cli_template", "verified": false,
+      "cmd": ["hermes", "chat", "-q", "{prompt}"], "prompt_via": "arg", "capabilities": {"web": false, "browser": false}, "models": [], "efforts": [],
+      "note": "Preset from the public docs; its one-shot flag was not verified. Edit cmd in Settings if your version differs."
+    },
+    "omp": {
+      "label": "oh-my-pi (omp)", "type": "cli_template", "verified": false,
+      "cmd": ["omp", "-p", "{prompt}"], "prompt_via": "arg", "capabilities": {"web": false, "browser": false}, "models": [], "efforts": [],
+      "note": "Preset guess; check `omp --help` for its print/RPC mode and edit cmd accordingly."
+    },
+    "custom": {
+      "label": "Custom command", "type": "cli_template", "verified": false,
+      "cmd": [], "prompt_via": "stdin", "capabilities": {"web": false, "browser": false}, "models": [], "efforts": [],
+      "note": "Any CLI that reads a prompt (stdin or {prompt} argument) and prints the answer."
+    }
+  },
+  "prices_per_mtok": {
+    "claude-sonnet-5-5": {"in": 3.0, "out": 15.0}, "sonnet": {"in": 3.0, "out": 15.0}, "haiku": {"in": 1.0, "out": 5.0}, "opus": {"in": 15.0, "out": 75.0}
+  }
+}

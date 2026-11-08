@@ -79,7 +79,8 @@ def google_careers():
     import json as _json, re as _re, urllib.parse as _up
     from common import http_get
     out, seen = [], set()
-    for loc, qs in GOOGLE_QUERIES.items():
+    from common import SETTINGS
+    for loc, qs in SETTINGS.get("google_locations") or GOOGLE_QUERIES.items():
         for q in qs:
             for lvl in GOOGLE_LEVELS:
                 for page in (1, 2):

@@ -5,117 +5,87 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JobAgent</title>
 <style>
-:root{
-  --bg:#f5f6f8; --panel:#ffffff; --panel2:#f0f2f5; --line:#e3e6ec; --text:#171a21; --mut:#667085; --acc:#4f46e5; --acc2:#6366f1; --accsoft:#eef0ff;
-  --ok:#0f9d58; --oksoft:#e6f6ec; --warn:#b7791f; --warnsoft:#fdf3dc; --bad:#d92d20; --badsoft:#fde8e6; --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 14px rgba(16,24,40,.06);
-}
-:root[data-theme=dark]{
-  --bg:#0d0f14; --panel:#151922; --panel2:#1b2030; --line:#252b3a; --text:#e8eaf0; --mut:#8b94a7; --acc:#7c83ff; --acc2:#9aa0ff; --accsoft:#1d2140;
-  --ok:#3ecf8e; --oksoft:#112a20; --warn:#f0b429; --warnsoft:#2d2410; --bad:#ff6b5e; --badsoft:#34171a; --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35);
-}
-*{box-sizing:border-box}
-html,body{height:100%}
+:root{--bg:#f5f6f8;--panel:#fff;--panel2:#f0f2f5;--line:#e3e6ec;--text:#171a21;--mut:#667085;--acc:#4f46e5;--acc2:#6366f1;--accsoft:#eef0ff;--ok:#0f9d58;--oksoft:#e6f6ec;--warn:#b7791f;--warnsoft:#fdf3dc;--bad:#d92d20;--badsoft:#fde8e6;--shadow:0 1px 2px rgba(16,24,40,.05),0 4px 14px rgba(16,24,40,.06)}
+:root[data-theme=dark]{--bg:#0d0f14;--panel:#151922;--panel2:#1b2030;--line:#252b3a;--text:#e8eaf0;--mut:#8b94a7;--acc:#7c83ff;--acc2:#9aa0ff;--accsoft:#1d2140;--ok:#3ecf8e;--oksoft:#112a20;--warn:#f0b429;--warnsoft:#2d2410;--bad:#ff6b5e;--badsoft:#34171a;--shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35)}
+*{box-sizing:border-box}html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI Variable","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-button{font:inherit;color:inherit;cursor:pointer}
+button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}
 a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
-.app{display:grid;grid-template-columns:240px 1fr;min-height:100%}
-/* sidebar */
-aside{background:var(--panel);border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
-.brand{display:flex;align-items:center;gap:10px;padding:2px 10px 16px;font-weight:700;font-size:16px;letter-spacing:.2px}
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100%}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:16px 10px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 10px 14px;font-weight:700;font-size:16px}
 .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--acc),#22d3ee);display:grid;place-items:center;color:#fff;font-weight:800}
-nav button{width:100%;display:flex;align-items:center;gap:10px;background:none;border:0;border-radius:9px;padding:9px 10px;text-align:left;color:var(--mut);font-weight:500}
-nav button:hover{background:var(--panel2);color:var(--text)}
-nav button.on{background:var(--accsoft);color:var(--acc);font-weight:600}
-nav .ico{width:18px;text-align:center}
-nav .n{margin-left:auto;font-size:11px;background:var(--panel2);color:var(--mut);border-radius:20px;padding:1px 8px;font-weight:600}
-nav button.on .n{background:var(--acc);color:#fff}
-nav .sep{height:1px;background:var(--line);margin:10px 6px}
-.side-foot{margin-top:16px;padding:10px;border:1px dashed var(--line);border-radius:10px;color:var(--mut);font-size:12px}
-/* main */
-main{padding:0 28px 60px;min-width:0}
-.top{position:sticky;top:0;z-index:20;background:linear-gradient(var(--bg) 82%,transparent);padding:16px 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.search{flex:1;min-width:220px;position:relative}
-.search input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px 9px 34px;color:var(--text);font:inherit;box-shadow:var(--shadow)}
-.search:before{content:"\1F50D";position:absolute;left:11px;top:9px;font-size:13px;opacity:.6}
-.btn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 13px;font-weight:600;font-size:13px;box-shadow:var(--shadow)}
-.btn:hover{border-color:var(--acc)}
-.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}.btn.pri:hover{background:var(--acc2)}
-.btn.ok{background:var(--oksoft);color:var(--ok);border-color:transparent}
-.btn.warn{background:var(--warnsoft);color:var(--warn);border-color:transparent}
-.btn.sm{padding:5px 10px;font-size:12px;box-shadow:none}
-.btn.ghost{background:transparent;box-shadow:none}
-.btn[disabled]{opacity:.5;cursor:default}
-.menu{position:relative}.menu .pop{display:none;position:absolute;right:0;top:110%;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;min-width:190px;z-index:30}
+.grp{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);padding:12px 10px 4px;font-weight:700}
+nav button{width:100%;display:flex;align-items:center;gap:10px;background:none;border:0;border-radius:9px;padding:8px 10px;text-align:left;color:var(--mut);font-weight:500}
+nav button:hover{background:var(--panel2);color:var(--text)}nav button.on{background:var(--accsoft);color:var(--acc);font-weight:600}
+nav .ico{width:18px;text-align:center}nav .n{margin-left:auto;font-size:11px;background:var(--panel2);color:var(--mut);border-radius:20px;padding:1px 8px;font-weight:600}nav button.on .n{background:var(--acc);color:#fff}
+.side-foot{margin-top:14px;padding:10px;border:1px dashed var(--line);border-radius:10px;color:var(--mut);font-size:12px}
+main{padding:0 28px 70px;min-width:0}
+.top{position:sticky;top:0;z-index:20;background:linear-gradient(var(--bg) 82%,transparent);padding:14px 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.search{flex:1;min-width:200px;position:relative}.search input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px 9px 34px;box-shadow:var(--shadow)}.search:before{content:"\1F50D";position:absolute;left:11px;top:9px;font-size:13px;opacity:.6}
+.btn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 13px;font-weight:600;font-size:13px;box-shadow:var(--shadow)}.btn:hover{border-color:var(--acc)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}.btn.pri:hover{background:var(--acc2)}.btn.ok{background:var(--oksoft);color:var(--ok);border-color:transparent}.btn.warn{background:var(--warnsoft);color:var(--warn);border-color:transparent}
+.btn.sm{padding:5px 10px;font-size:12px;box-shadow:none}.btn.ghost{background:transparent;box-shadow:none}.btn[disabled]{opacity:.5;cursor:default}
+.menu{position:relative}.pop{display:none;position:absolute;right:0;top:110%;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;min-width:210px;z-index:30}
 .menu.open .pop{display:block}.pop button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:7px;padding:8px 10px}.pop button:hover{background:var(--panel2)}
 .filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 14px}
-.chip{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--mut);font-weight:600}
-.chip.on{background:var(--accsoft);border-color:var(--acc);color:var(--acc)}
-select{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:6px 10px;color:var(--text);font:inherit;font-size:12px}
-h2{font-size:20px;margin:6px 0 2px}.sub{color:var(--mut);margin:0 0 14px}
-/* cards */
-.grid{display:grid;gap:12px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);display:grid;grid-template-columns:44px 1fr auto;gap:4px 14px;align-items:start}
-.card:hover{border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--mut);font-weight:600}.chip.on{background:var(--accsoft);border-color:var(--acc);color:var(--acc)}
+input,select,textarea{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 10px;color:var(--text);width:100%}textarea{resize:vertical;min-height:90px}
+input[type=checkbox]{width:auto;accent-color:var(--acc)}select{width:auto;max-width:100%}
+h2{font-size:20px;margin:6px 0 2px}h3{font-size:15px;margin:18px 0 6px}.sub{color:var(--mut);margin:0 0 14px}
+.grid{display:grid;gap:12px}.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.job{display:grid;grid-template-columns:44px 1fr auto;gap:4px 14px;align-items:start}.job:hover{border-color:color-mix(in srgb,var(--acc) 45%,var(--line))}
 .av{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-weight:800;color:#fff;font-size:17px}
-.title{font-weight:650;font-size:15px;line-height:1.3}.title a{color:var(--text)}.title a:hover{color:var(--acc)}
-.co{color:var(--mut);font-size:12.5px;margin-bottom:2px}
-.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.pill{font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;background:var(--panel2);color:var(--mut)}
+.title{font-weight:650;font-size:15px;line-height:1.3}.title a{color:var(--text)}.title a:hover{color:var(--acc)}.co{color:var(--mut);font-size:12.5px;margin-bottom:2px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pill{font-size:11px;font-weight:600;border-radius:20px;padding:2px 9px;background:var(--panel2);color:var(--mut)}
 .pill.ok{background:var(--oksoft);color:var(--ok)}.pill.warn{background:var(--warnsoft);color:var(--warn)}.pill.bad{background:var(--badsoft);color:var(--bad)}.pill.acc{background:var(--accsoft);color:var(--acc)}
-.why{grid-column:2/3;color:var(--mut);font-size:13px;margin-top:6px}
-.actions{grid-column:2/4;display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.score{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;position:relative}
-.score small{display:block;font-size:9px;font-weight:600;color:var(--mut);margin-top:-2px}
+.why{grid-column:2/3;color:var(--mut);font-size:13px;margin-top:6px}.actions{grid-column:2/4;display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.score{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px}.score small{display:block;font-size:9px;font-weight:600;color:var(--mut);margin-top:-2px}
 .empty{padding:50px 10px;text-align:center;color:var(--mut)}
-/* stats */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
-.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer}
-.stat b{display:block;font-size:26px;line-height:1.1}.stat span{color:var(--mut);font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer}.stat b{display:block;font-size:26px;line-height:1.1}.stat span{color:var(--mut);font-size:12px}
 .sect{margin:22px 0 8px;font-weight:700;font-size:13px;letter-spacing:.4px;text-transform:uppercase;color:var(--mut)}
-.task{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0}
-.task input{margin-top:4px;width:17px;height:17px;accent-color:var(--acc)}
-.task.done{opacity:.55}.task.done .tt{text-decoration:line-through}
-.tt{font-weight:600}.tm{color:var(--mut);font-size:12.5px;margin-top:2px}
+.task{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0}.task input{margin-top:4px;width:17px;height:17px}.task.done{opacity:.55}.task.done .tt{text-decoration:line-through}.tt{font-weight:600}.tm{color:var(--mut);font-size:12.5px;margin-top:2px}
 .thought{background:var(--accsoft);color:var(--acc);border-radius:12px;padding:12px 14px;margin-top:12px;font-weight:600}
-/* drawer */
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}th{color:var(--mut);font-weight:600;font-size:12px}
+td input,td select{padding:5px 8px}
+.bar{height:8px;border-radius:6px;background:var(--acc);min-width:2px}.bars{display:flex;align-items:flex-end;gap:5px;height:70px}.bars div{flex:1;background:var(--accsoft);border-radius:4px 4px 0 0;position:relative}.bars div i{position:absolute;bottom:0;left:0;right:0;background:var(--acc);border-radius:4px 4px 0 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row>*{flex:0 0 auto}.grow{flex:1 1 auto!important}
+.field{display:grid;gap:4px;margin-bottom:10px}.field label{font-size:12px;color:var(--mut);font-weight:600}
+.badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px}.badge.on{background:var(--oksoft);color:var(--ok)}.badge.off{background:var(--badsoft);color:var(--bad)}.badge.exp{background:var(--warnsoft);color:var(--warn)}
+.chat{display:flex;flex-direction:column;gap:10px;max-height:56vh;overflow:auto;padding:4px}.msg{max-width:78%;padding:10px 14px;border-radius:14px;white-space:pre-wrap}.msg.user{align-self:flex-end;background:var(--acc);color:#fff;border-bottom-right-radius:4px}.msg.agent{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-bottom-left-radius:4px}.msg.system{align-self:center;color:var(--mut);font-size:12px}
+.prop{align-self:flex-start;display:flex;gap:8px;flex-wrap:wrap}
 .scrim{position:fixed;inset:0;background:rgba(5,8,16,.45);opacity:0;pointer-events:none;transition:.2s;z-index:40}.scrim.on{opacity:1;pointer-events:auto}
-.drawer{position:fixed;top:0;right:0;height:100vh;width:min(760px,100vw);background:var(--bg);border-left:1px solid var(--line);transform:translateX(105%);transition:.25s;z-index:50;display:flex;flex-direction:column}
-.drawer.on{transform:none}
-.dh{padding:16px 20px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center}
-.dh .x{margin-left:auto}
-.dt{display:flex;gap:6px;padding:10px 20px 0;background:var(--panel);border-bottom:1px solid var(--line)}
-.dt button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--mut);font-weight:600}.dt button.on{color:var(--acc);border-color:var(--acc)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(780px,100vw);background:var(--bg);border-left:1px solid var(--line);transform:translateX(105%);transition:.25s;z-index:50;display:flex;flex-direction:column}.drawer.on{transform:none}
+.dh{padding:16px 20px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center}.dh .x{margin-left:auto}
+.dt{display:flex;gap:4px;padding:10px 20px 0;background:var(--panel);border-bottom:1px solid var(--line);overflow:auto}.dt button{background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--mut);font-weight:600;white-space:nowrap}.dt button.on{color:var(--acc);border-color:var(--acc)}
 .db{padding:18px 22px 50px;overflow:auto;flex:1}
-.md h1,.md h2,.md h3{margin:18px 0 6px}.md h1{font-size:20px}.md h2{font-size:16px}.md h3{font-size:14px}
-.md p,.md ul{margin:6px 0}.md ul{padding-left:20px}.md code{background:var(--panel2);padding:1px 5px;border-radius:5px;font-size:12px}
-.blk{position:relative;border-radius:8px;padding:4px 8px;margin:4px -8px}.blk:hover{background:var(--panel2)}
-.blk .cp{position:absolute;right:6px;top:4px;display:none}.blk:hover .cp{display:block}
+.md h1,.md h2,.md h3{margin:18px 0 6px}.md h1{font-size:20px}.md h2{font-size:16px}.md h3{font-size:14px}.md p,.md ul{margin:6px 0}.md ul{padding-left:20px}.md code{background:var(--panel2);padding:1px 5px;border-radius:5px;font-size:12px}
+.blk{position:relative;border-radius:8px;padding:4px 8px;margin:4px -8px}.blk:hover{background:var(--panel2)}.blk .cp{position:absolute;right:6px;top:4px;display:none}.blk:hover .cp{display:block}
 pre.log{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;max-height:70vh;overflow:auto;font-size:12px;white-space:pre-wrap}
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:90;align-items:center}
-.t{background:#111827;color:#fff;border-radius:10px;padding:9px 16px;font-weight:600;box-shadow:var(--shadow)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:95;align-items:center}.t{background:#111827;color:#fff;border-radius:10px;padding:9px 16px;font-weight:600;box-shadow:var(--shadow)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
 .menu-btn{display:none}
-@media(max-width:860px){.app{grid-template-columns:1fr}aside{position:fixed;left:0;top:0;z-index:60;transform:translateX(-105%);transition:.2s;width:250px}aside.on{transform:none}.menu-btn{display:inline-block}main{padding:0 14px 60px}.card{grid-template-columns:40px 1fr}.score{display:none}.actions{grid-column:1/3}.why{grid-column:1/3}}
+/* tour */
+#tour{position:fixed;inset:0;z-index:100;display:none}#tour.on{display:block}
+#tour .shade{position:absolute;inset:0;background:rgba(5,8,16,.62)}#tour .hole{position:absolute;border-radius:12px;box-shadow:0 0 0 9999px rgba(5,8,16,.62);transition:.25s;pointer-events:none}
+#tour .tip{position:absolute;width:min(360px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+#tour .tip h4{margin:0 0 6px;font-size:15px}#tour .tip p{margin:0 0 12px;color:var(--mut)}
+.modal{position:fixed;inset:0;z-index:98;background:rgba(5,8,16,.6);display:none;place-items:center;padding:16px}.modal.on{display:grid}.modal .box{background:var(--panel);border-radius:16px;padding:22px;width:min(640px,100%);max-height:92vh;overflow:auto;box-shadow:var(--shadow)}
+@media(max-width:860px){.app{grid-template-columns:1fr}aside{position:fixed;left:0;top:0;z-index:60;transform:translateX(-105%);transition:.2s;width:250px}aside.on{transform:none}.menu-btn{display:inline-block}main{padding:0 14px 70px}.job{grid-template-columns:40px 1fr}.score{display:none}.actions,.why{grid-column:1/3}}
 </style>
 </head>
 <body>
 <div class="app">
-<aside id="side">
-  <div class="brand"><div class="logo">J</div>JobAgent</div>
-  <nav id="nav"></nav>
-  <div class="side-foot" id="foot">loading...</div>
-</aside>
+<aside id="side"><div class="brand"><div class="logo">J</div>JobAgent</div><nav id="nav"></nav><div class="side-foot" id="foot">loading...</div></aside>
 <main>
   <div class="top">
     <button class="btn menu-btn" onclick="document.getElementById('side').classList.toggle('on')">Menu</button>
-    <div class="search"><input id="q" type="search" placeholder="Search company, title, location   ( / )" oninput="render()"></div>
+    <div class="search" id="t-search"><input id="q" type="search" placeholder="Search company, title, location   ( / )" oninput="render()"></div>
     <button class="btn pri" id="cyc" onclick="run('cycle')">Run full cycle</button>
     <div class="menu" id="more"><button class="btn" onclick="document.getElementById('more').classList.toggle('open')">More</button>
-      <div class="pop">
-        <button onclick="run('poll')">Poll sources (free)</button><button onclick="run('triage')">Triage new postings</button><button onclick="run('scout')">Web scout (programs, X, careers)</button>
-        <button onclick="run('today','--force')">Rebuild today's plan</button><button onclick="run('dashboard')">Rebuild dashboard</button><button onclick="run('yc-profile')">Refresh YC profile</button>
-        <button onclick="toggleTheme()">Toggle light / dark</button>
-      </div></div>
+      <div class="pop"><button onclick="run('poll')">Poll sources (free)</button><button onclick="run('triage')">Triage new postings</button><button onclick="run('scout')">Web scout (programs, X, careers)</button>
+        <button onclick="run('today','--force')">Rebuild today's plan</button><button onclick="run('reflect')">Update agent memory now</button><button onclick="run('yc-profile')">Refresh YC profile</button><button onclick="startTour()">Take the tour</button><button onclick="toggleTheme()">Light / dark</button></div></div>
   </div>
   <div class="filters" id="filters"></div>
   <div id="view"></div>
@@ -124,90 +94,180 @@ pre.log{background:var(--panel);border:1px solid var(--line);border-radius:12px;
 <div class="scrim" id="scrim" onclick="closeDrawer()"></div>
 <div class="drawer" id="drawer"><div class="dh" id="dh"></div><div class="dt" id="dt"></div><div class="db md" id="db"></div></div>
 <div id="toast"></div>
+<div id="tour"><div class="shade"></div><div class="hole" id="hole"></div><div class="tip" id="tip"></div></div>
+<div class="modal" id="setup"><div class="box" id="setupbox"></div></div>
 <script>
 const H={'X-JobAgent':'1','Content-Type':'application/json'};
-let S={jobs:[],programs:[],budget:{},running:[],plan:null},VIEW='today',LOC='all',TIER='all',SORT='fit',CUR=null,DTAB='README';
-const NAV=[['today','Today','☀'],['ready','Ready to submit','✅'],['fill','Needs you','✋'],['watch','Watchlist','⭐'],['packet','Prepared','📄'],
- ['match','Best matches','🎯'],['new','New','✨'],['applied','Applied','📨'],['programs','Programs','🎓'],['log','Activity','📜']];
+let S={jobs:[],programs:[],budget:{},running:[],plan:null,inbox_pending:0},VIEW='today',LOC='all',TIER='all',SORT='fit',CUR=null,DTAB='README',CFG=null,TOURI=0;
+const NAV=[['Work'],['today','Today','☀'],['ready','Ready to submit','✅'],['fill','Needs you','✋'],['packet','Prepared','📄'],['match','Best matches','🎯'],['new','New','✨'],['applied','Applied','📨'],
+ ['Network'],['watch','Watchlist','⭐'],['programs','Programs','🎓'],['Tools'],['inbox','Inbox','📥'],['chat','Ask the agent','💬'],['voice','My voice','✍'],
+ ['Setup'],['usage','Usage & cost','📈'],['settings','Settings','⚙'],['help','Help','❓'],['log','Activity','📜']];
 const COL=['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#14b8a6','#ec4899','#84cc16','#f97316'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const col=s=>COL[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0)%COL.length];
+const $=id=>document.getElementById(id);
 async function api(p,o){const r=await fetch(p,o);return r.json()}
-function toast(m){const d=document.createElement('div');d.className='t';d.innerHTML=m;document.getElementById('toast').appendChild(d);setTimeout(()=>d.remove(),3200)}
+const post=(p,b)=>api(p,{method:'POST',headers:H,body:JSON.stringify(b||{})});
+function toast(m){const d=document.createElement('div');d.className='t';d.innerHTML=m;$('toast').appendChild(d);setTimeout(()=>d.remove(),3400)}
 function toggleTheme(){const r=document.documentElement;const n=r.dataset.theme=='dark'?'light':'dark';r.dataset.theme=n;try{localStorage.setItem('ja-theme',n)}catch(e){}}
-try{const t=localStorage.getItem('ja-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=t}catch(e){}
-document.addEventListener('click',e=>{if(!e.target.closest('#more'))document.getElementById('more').classList.remove('open')});
-document.addEventListener('keydown',e=>{if(e.key=='/'&&document.activeElement.tagName!='INPUT'){e.preventDefault();document.getElementById('q').focus()}if(e.key=='Escape')closeDrawer()});
+try{document.documentElement.dataset.theme=localStorage.getItem('ja-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}
+document.addEventListener('click',e=>{if(!e.target.closest('#more'))$('more').classList.remove('open')});
+document.addEventListener('keydown',e=>{if(e.key=='/'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){e.preventDefault();$('q').focus()}if(e.key=='Escape'){closeDrawer();endTour()}});
 
-const sel={ready:j=>j.status=='ready',fill:j=>j.status.startsWith('fill-'),watch:j=>j.status=='watch',packet:j=>j.status=='packet',
- match:j=>j.status=='triaged'&&['APPLY','STRETCH'].includes(j.verdict),new:j=>j.status=='new'&&j.score>=65,applied:j=>j.status=='applied'};
-const cnt=k=>k=='programs'?S.programs.length:(sel[k]?S.jobs.filter(sel[k]).length:'');
-function nav(){document.getElementById('nav').innerHTML=NAV.map(([k,l,i],ix)=>`${[1,6,9].includes(ix)?'<div class="sep"></div>':''}<button class="${VIEW==k?'on':''}" onclick="go('${k}')"><span class="ico">${i}</span>${l}${cnt(k)!==''?`<span class="n">${cnt(k)}</span>`:''}</button>`).join('')}
-function go(k){VIEW=k;document.getElementById('side').classList.remove('on');render();if(k=='log')loadLog()}
-function filters(){const f=document.getElementById('filters');
- if(!sel[VIEW]){f.innerHTML='';return}
- const c=(id,cur,set,opts)=>opts.map(([v,l])=>`<button class="chip ${cur==v?'on':''}" onclick="${set}='${v}';render()">${l}</button>`).join('');
- f.innerHTML=c('loc',LOC,'LOC',[['all','All locations'],['india','India'],['remote','Remote'],['relocate','Relocate']])+'<span style="width:8px"></span>'+c('tier',TIER,'TIER',[['all','All tiers'],['SA','Tier S/A']])+
- `<span style="flex:1"></span><select onchange="SORT=this.value;render()"><option value="fit" ${SORT=='fit'?'selected':''}>Best fit</option><option value="new" ${SORT=='new'?'selected':''}>Newest</option></select>`}
-function scoreRing(j){const v=Math.round(j.fit??j.score);const c=v>=65?'var(--ok)':v>=45?'var(--warn)':'var(--mut)';return `<div class="score" style="background:conic-gradient(${c} ${v*3.6}deg,var(--panel2) 0)"><div style="background:var(--panel);width:38px;height:38px;border-radius:50%;display:grid;place-items:center;line-height:1">${v}<small>${j.fit!=null?'fit':'match'}</small></div></div>`}
+const sel={ready:j=>j.status=='ready',fill:j=>j.status.startsWith('fill-'),watch:j=>j.status=='watch',packet:j=>j.status=='packet',match:j=>j.status=='triaged'&&['APPLY','STRETCH'].includes(j.verdict),new:j=>j.status=='new'&&j.score>=65,applied:j=>j.status=='applied'};
+const cnt=k=>k=='programs'?S.programs.length:k=='inbox'?(S.inbox_pending||''):(sel[k]?S.jobs.filter(sel[k]).length:'');
+function nav(){$('nav').innerHTML=NAV.map(n=>n.length==1?`<div class="grp">${n[0]}</div>`:`<button id="nav-${n[0]}" class="${VIEW==n[0]?'on':''}" onclick="go('${n[0]}')"><span class="ico">${n[2]}</span>${n[1]}${cnt(n[0])!==''&&cnt(n[0])!==0?`<span class="n">${cnt(n[0])}</span>`:''}</button>`).join('')}
+function go(k){VIEW=k;$('side').classList.remove('on');render();if(k=='log')loadLog();if(k=='settings')loadSettings();if(k=='usage')loadUsage();if(k=='inbox')loadInbox();if(k=='chat')loadChat();if(k=='voice')loadVoice()}
+function filters(){const f=$('filters');if(!sel[VIEW]){f.innerHTML='';return}const c=(cur,set,opts)=>opts.map(([v,l])=>`<button class="chip ${cur==v?'on':''}" onclick="${set}='${v}';render()">${l}</button>`).join('');
+ f.innerHTML=c(LOC,'LOC',[['all','All locations'],['india','Home country'],['remote','Remote'],['relocate','Relocate']])+'<span style="width:8px"></span>'+c(TIER,'TIER',[['all','All tiers'],['SA','Tier S/A']])+`<span style="flex:1"></span><select onchange="SORT=this.value;render()"><option value="fit" ${SORT=='fit'?'selected':''}>Best fit</option><option value="new" ${SORT=='new'?'selected':''}>Newest</option></select>`}
+function ring(j){const v=Math.round(j.fit??j.score);const c=v>=65?'var(--ok)':v>=45?'var(--warn)':'var(--mut)';return `<div class="score" style="background:conic-gradient(${c} ${v*3.6}deg,var(--panel2) 0)"><div style="background:var(--panel);width:38px;height:38px;border-radius:50%;display:grid;place-items:center;line-height:1">${v}<small>${j.fit!=null?'fit':'match'}</small></div></div>`}
 function primary(j){if(j.status=='ready')return `<a class="btn pri sm" href="${esc(j.url)}" target="_blank">Open posting</a>`;
  if(j.status=='packet'||j.status.startsWith('fill-'))return `<button class="btn pri sm" onclick="run('fill','${esc(j.id)}')">Fill the form</button>`;
  if(j.status=='watch')return `<button class="btn pri sm" onclick="run('referral','${esc(j.id)}')">Plan referral</button>`;
  return `<button class="btn pri sm" onclick="run('packet','${esc(j.id)}')">Prepare application</button>`}
-function card(j){const loc=j.loc_class=='india'?['India','ok']:j.loc_class=='remote'?['Remote','acc']:['Relocate','warn'];
- const v=j.visa=='yes'?['visa sponsored','ok']:j.visa=='no'?['no sponsorship','bad']:null;
- return `<div class="card"><div class="av" style="background:${col(j.company)}">${esc(j.company[0]||'?')}</div>
+function reasonSkip(id){const r=prompt('Why skip? (optional, teaches the agent: e.g. "too senior", "not interested in this domain", "location")','');if(r===null)return;run('mark',id+' skip '+r)}
+function card(j){const loc=j.loc_class=='india'?['Home','ok']:j.loc_class=='remote'?['Remote','acc']:['Relocate','warn'];const v=j.visa=='yes'?['visa sponsored','ok']:j.visa=='no'?['no sponsorship','bad']:null;
+ return `<div class="card job"><div class="av" style="background:${col(j.company)}">${esc(j.company[0]||'?')}</div>
  <div><div class="co">${esc(j.company)} &middot; tier ${esc(j.tier)} &middot; ${esc(j.ats)}</div><div class="title"><a href="#" onclick="openDrawer('${esc(j.id)}');return false">${esc(j.title)}</a></div>
- <div class="chips"><span class="pill ${loc[1]}">${loc[0]}</span><span class="pill">${esc((j.location||'').slice(0,46))}</span>${v?`<span class="pill ${v[1]}">${v[0]}</span>`:''}${j.verdict?`<span class="pill ${j.verdict=='APPLY'?'ok':'warn'}">${j.verdict}</span>`:''}${j.resume?`<span class="pill">resume: ${esc(j.resume)}</span>`:''}</div></div>
- ${scoreRing(j)}
+ <div class="chips"><span class="pill ${loc[1]}">${loc[0]}</span><span class="pill">${esc((j.location||'').slice(0,46))}</span>${v?`<span class="pill ${v[1]}">${v[0]}</span>`:''}${j.verdict?`<span class="pill ${j.verdict=='APPLY'?'ok':'warn'}">${j.verdict}</span>`:''}${j.has_ref?'<span class="pill acc">referral plan</span>':''}${j.resume?`<span class="pill">resume: ${esc(j.resume)}</span>`:''}</div></div>${ring(j)}
  <div class="why">${esc(j.reason||j.watch_note||'')}${j.yoe_gap?` <i>Gap: ${esc(j.yoe_gap)}</i>`:''}</div>
  <div class="actions">${primary(j)}<button class="btn sm" onclick="openDrawer('${esc(j.id)}')">Details</button>${j.status!='watch'?`<button class="btn sm" onclick="run('referral','${esc(j.id)}')">Referral plan</button>`:''}
- <button class="btn ok sm" onclick="run('mark','${esc(j.id)} applied')">Mark applied</button><button class="btn warn sm" onclick="run('mark','${esc(j.id)} skip')">Skip</button></div></div>`}
-function rows(){const q=document.getElementById('q').value.toLowerCase();let r=S.jobs.filter(sel[VIEW]);
- if(LOC!='all')r=r.filter(j=>j.loc_class==LOC);if(TIER=='SA')r=r.filter(j=>['S','A'].includes(j.tier));
- if(q)r=r.filter(j=>(j.company+' '+j.title+' '+j.location).toLowerCase().includes(q));
- r.sort(SORT=='new'?(a,b)=>String(b.first_seen).localeCompare(String(a.first_seen)):(a,b)=>(b.fit??b.score)-(a.fit??a.score));return r}
-function today(){const ready=S.jobs.filter(sel.ready),fill=S.jobs.filter(sel.fill),watch=S.jobs.filter(sel.watch),p=S.plan,b=S.budget;
- let done={};try{done=JSON.parse(localStorage.getItem('ja-done-'+S.day)||'{}')}catch(e){}
- const stat=(n,l,k)=>`<div class="stat" onclick="go('${k}')"><b>${n}</b><span>${l}</span></div>`;
- let h=`<h2>Good ${new Date().getHours()<12?'morning':new Date().getHours()<18?'afternoon':'evening'}</h2><p class="sub">${S.day} &middot; last sweep ${esc((S.last_poll||'-').replace('T',' '))} &middot; ${S.active.toLocaleString()} postings tracked</p>
- <div class="stats">${stat(ready.length,'ready to submit','ready')}${stat(fill.length,'need a few fields','fill')}${stat(S.jobs.filter(sel.match).length,'best matches','match')}${stat(watch.length,'on the watchlist','watch')}${stat(S.jobs.filter(sel.new).length,'new strong matches','new')}</div>`;
- if(ready.length||fill.length){h+=`<div class="sect">Waiting for you</div><div class="grid">${[...ready,...fill].slice(0,6).map(card).join('')}</div>`}
+ <button class="btn ok sm" onclick="run('mark','${esc(j.id)} applied')">Mark applied</button><button class="btn warn sm" onclick="reasonSkip('${esc(j.id)}')">Skip</button></div></div>`}
+function rows(){const q=$('q').value.toLowerCase();let r=S.jobs.filter(sel[VIEW]);if(LOC!='all')r=r.filter(j=>j.loc_class==LOC);if(TIER=='SA')r=r.filter(j=>['S','A'].includes(j.tier));
+ if(q)r=r.filter(j=>(j.company+' '+j.title+' '+j.location).toLowerCase().includes(q));r.sort(SORT=='new'?(a,b)=>String(b.first_seen).localeCompare(String(a.first_seen)):(a,b)=>(b.fit??b.score)-(a.fit??a.score));return r}
+function today(){const ready=S.jobs.filter(sel.ready),fill=S.jobs.filter(sel.fill),watch=S.jobs.filter(sel.watch),p=S.plan;let done={};try{done=JSON.parse(localStorage.getItem('ja-done-'+S.day)||'{}')}catch(e){}
+ const stat=(n,l,k)=>`<div class="stat" onclick="go('${k}')"><b>${n}</b><span>${l}</span></div>`;const hr=new Date().getHours();
+ let h=`<h2>Good ${hr<12?'morning':hr<18?'afternoon':'evening'}${S.name?', '+esc(S.name):''}</h2><p class="sub">${S.day} &middot; last sweep ${esc((S.last_poll||'-').replace('T',' '))} &middot; ${S.active.toLocaleString()} postings tracked</p>
+ <div class="stats" id="t-stats">${stat(ready.length,'ready to submit','ready')}${stat(fill.length,'need a few fields','fill')}${stat(S.jobs.filter(sel.match).length,'best matches','match')}${stat(watch.length,'on the watchlist','watch')}${stat(S.jobs.filter(sel.new).length,'new strong matches','new')}</div>`;
+ if(ready.length||fill.length)h+=`<div class="sect">Waiting for you</div><div class="grid">${[...ready,...fill].slice(0,6).map(card).join('')}</div>`;
  if(p){h+=`<div class="sect">Today's plan <span style="text-transform:none;letter-spacing:0;font-weight:500">- tick them off</span></div>`+(p.tasks||[]).map((t,i)=>`<label class="task ${done['t'+i]?'done':''}"><input type="checkbox" ${done['t'+i]?'checked':''} onchange="tick('t${i}',this.checked)"><div><div class="tt">${esc(t.title)} <span class="pill">${t.minutes} min</span></div><div class="tm">${esc(t.why)}</div><div class="tm"><b>Proof:</b> ${esc(t.proof)}</div></div></label>`).join('');
   if((p.outreach||[]).length)h+=`<div class="sect">Outreach today</div>`+p.outreach.map((o,i)=>`<label class="task ${done['o'+i]?'done':''}"><input type="checkbox" ${done['o'+i]?'checked':''} onchange="tick('o${i}',this.checked)"><div><div class="tt">${esc(o.who_or_where)}</div><div class="tm">${esc(o.action)}</div></div></label>`).join('');
   if(p.thought)h+=`<div class="thought">${esc(p.thought)}</div>`}else h+=`<div class="empty">No plan yet. <button class="btn sm" onclick="run('today','--force')">Build today's plan</button></div>`;
- if(watch.length)h+=`<div class="sect">High-stakes watchlist (relationship first)</div><div class="grid">${watch.slice(0,4).map(card).join('')}</div>`;
- return h}
+ if(watch.length)h+=`<div class="sect">High-stakes watchlist (relationship first)</div><div class="grid">${watch.slice(0,4).map(card).join('')}</div>`;return h}
 function tick(k,v){let d={};try{d=JSON.parse(localStorage.getItem('ja-done-'+S.day)||'{}')}catch(e){}d[k]=v;try{localStorage.setItem('ja-done-'+S.day,JSON.stringify(d))}catch(e){}render()}
-function programs(){const q=document.getElementById('q').value.toLowerCase();const r=S.programs.filter(p=>JSON.stringify(p).toLowerCase().includes(q));
- return `<h2>Pre-docs, residencies, fellowships</h2><p class="sub">Prestige programs are tracked, never auto-applied. Build the relationship first.</p><div class="grid">${r.map(p=>`<div class="card"><div class="av" style="background:${col(p.org)}">${esc((p.org||'?')[0])}</div><div><div class="co">${esc(p.org)} &middot; ${esc(p.kind)}</div><div class="title"><a href="${esc(p.url)}" target="_blank">${esc(p.name)}</a></div></div><span></span><div class="why"><b>Window:</b> ${esc(p.window)}<br><b>Eligible:</b> ${esc(p.eligibility)}</div></div>`).join('')||'<div class="empty">Nothing yet. Run the web scout.</div>'}</div>`}
-function render(){nav();filters();const v=document.getElementById('view');
- document.getElementById('foot').innerHTML=`Claude today<br><b>${S.budget.triage_calls||0}</b> triage &middot; <b>${S.budget.packets||0}</b> packets &middot; <b>${S.budget.referrals||0}</b> referrals &middot; <b>${S.budget.fills||0}</b> fills<br>${S.running.length?`<span class="spin"></span>${esc(S.running.join(', '))}`:'idle'}`;
- document.getElementById('cyc').innerHTML=S.running.includes('cycle')?'<span class="spin"></span>Running...':'Run full cycle';
- if(VIEW=='today')v.innerHTML=today();else if(VIEW=='programs')v.innerHTML=programs();else if(VIEW=='log')v.innerHTML='<h2>Activity</h2><p class="sub">Latest agent log</p><pre class="log" id="logbox"></pre>';
- else{const r=rows(),t=NAV.find(n=>n[0]==VIEW)[1];v.innerHTML=`<h2>${t}</h2><p class="sub">${r.length} shown</p><div class="grid">${r.slice(0,120).map(card).join('')||'<div class="empty">Nothing here yet.</div>'}</div>`}}
-async function load(){try{S=await api('/api/state');render();if(CUR&&document.getElementById('drawer').classList.contains('on')){}}catch(e){}}
-async function run(cmd,arg=''){const r=await api('/api/run',{method:'POST',headers:H,body:JSON.stringify({cmd,arg})});
- if(r.error)toast(esc(r.error));else toast('Started: '+esc(r.started));setTimeout(load,700)}
-async function loadLog(){const t=await (await fetch('/api/log')).text();const b=document.getElementById('logbox');if(b){b.textContent=t;b.scrollTop=b.scrollHeight}}
-/* drawer */
+function programs(){const q=$('q').value.toLowerCase();const r=S.programs.filter(p=>JSON.stringify(p).toLowerCase().includes(q));
+ return `<h2>Pre-docs, residencies, fellowships</h2><p class="sub">Prestige programs are tracked, never auto-applied. Build the relationship first.</p><div class="grid">${r.map(p=>`<div class="card job"><div class="av" style="background:${col(p.org)}">${esc((p.org||'?')[0])}</div><div><div class="co">${esc(p.org)} &middot; ${esc(p.kind)}</div><div class="title"><a href="${esc(p.url)}" target="_blank">${esc(p.name)}</a></div></div><span></span><div class="why"><b>Window:</b> ${esc(p.window)}<br><b>Eligible:</b> ${esc(p.eligibility)}</div></div>`).join('')||'<div class="empty">Nothing yet. Run the web scout.</div>'}</div>`}
+/* ---------- inbox */
+function inboxView(){return `<h2>Inbox</h2><p class="sub">Found something somewhere else (a tweet, a friend's message, a newsletter, a careers page)? Paste links or text and tell the agent why it matters. It reads the pages, judges fit, and prepares the application and referral plan if it's worth it.</p>
+ <div class="card"><div class="field"><label>Paste links, job text, messages, notes</label><textarea id="ib-text" rows="6" placeholder="https://jobs.example.com/123 ... or paste the whole job description ... or 'Priya at Acme says the kernels team is hiring interns'"></textarea></div>
+ <div class="field"><label>Your context (optional: who told you, what you want, constraints)</label><input id="ib-ctx" placeholder="e.g. my friend works there, I'd prefer remote, deadline Friday"></div><button class="btn pri" onclick="sendInbox()">Add to inbox</button></div>
+ <h3>Recent</h3><div id="ib-list"></div>`}
+async function sendInbox(){const t=$('ib-text').value.trim();if(!t)return;await post('/api/inbox',{text:t,context:$('ib-ctx').value});$('ib-text').value='';toast('Added. The agent is on it.');loadInbox()}
+async function loadInbox(){const r=await api('/api/inbox');const el=$('ib-list');if(!el)return;el.innerHTML=r.map(i=>{let res='';try{const x=JSON.parse(i.result||'null');if(Array.isArray(x))res=x.map(o=>`<div class="tm"><b>${esc(o.company)}</b> - ${esc(o.title)} ${o.verdict?`<span class="pill ${o.verdict=='APPLY'?'ok':o.verdict=='STRETCH'?'warn':''}">${o.verdict} ${Math.round(o.fit||0)}</span>`:''} ${o.prepared?'<span class="pill acc">packet + referral ready</span>':''}<br>${esc(o.reason||'')}</div>`).join('');else if(x&&x.error)res=`<div class="tm">Error: ${esc(x.error)}</div>`}catch(e){}
+ return `<div class="card" style="margin:8px 0"><div class="tm">${esc(i.ts.replace('T',' '))} &middot; <span class="pill ${i.status=='done'?'ok':i.status=='error'?'bad':'warn'}">${i.status}</span></div><div>${esc(i.text.slice(0,240))}</div>${res}</div>`}).join('')||'<div class="empty">Nothing yet.</div>'}
+/* ---------- chat */
+function chatView(){return `<h2>Ask the agent</h2><p class="sub">Ask about your matches, who to contact, what to do this week. It knows your profile, memory and pipeline. It only <i>proposes</i> actions; you confirm each one.</p>
+ <div class="card"><div class="chat" id="chatbox"></div><div class="row" style="margin-top:12px"><input id="chat-in" class="grow" placeholder="e.g. Which of my best matches should I message people for first?" onkeydown="if(event.key=='Enter')sendChat()"><button class="btn pri" onclick="sendChat()">Send</button></div>
+ <div class="row" style="margin-top:8px"><button class="chip" onclick="ask('What should I do today to improve my chances?')">What should I do today?</button><button class="chip" onclick="ask('Which top match is the best bet and who should I contact first?')">Best bet + who to contact</button><button class="chip" onclick="ask('Why did you rank my top 3 matches that way?')">Why these matches?</button></div></div>`}
+function ask(t){$('chat-in').value=t;sendChat()}
+async function sendChat(){const t=$('chat-in').value.trim();if(!t)return;$('chat-in').value='';await post('/api/chat',{text:t});loadChat();setTimeout(loadChat,2500)}
+async function loadChat(){const r=await api('/api/chat');const b=$('chatbox');if(!b)return;b.innerHTML=r.messages.map(m=>{if(m.role=='proposal'){let ps=[];try{ps=JSON.parse(m.text)}catch(e){}return `<div class="prop">${ps.map(p=>`<button class="btn sm" onclick="runProposal('${p.kind}',${esc(JSON.stringify(p.arg)).replace(/&quot;/g,'&quot;')})">Run: ${esc(p.kind)} ${esc(p.arg.slice(0,48))}</button>`).join('')}</div>`}return `<div class="msg ${m.role}">${esc(m.text)}</div>`}).join('')+(r.busy?'<div class="msg system"><span class="spin"></span>thinking...</div>':'');b.scrollTop=b.scrollHeight;if(r.busy)setTimeout(loadChat,2500)}
+function runProposal(kind,arg){if(kind=='remember'){post('/api/memory',{note:arg}).then(()=>toast('Remembered'));return}if(kind=='ingest'){post('/api/inbox',{text:arg,context:'from chat'}).then(()=>toast('Added to inbox'));return}run(kind,arg)}
+/* ---------- voice */
+function voiceView(){return `<h2>My voice</h2><p class="sub">Drafts get written to sound like you. Paste messages you really sent (the ones you're happy with). When you edit a draft before sending, paste the draft and your final version so the agent learns your edits.</p>
+ <div class="two"><div class="card"><h3 style="margin-top:0">Messages I actually sent</h3><textarea id="v-sample" rows="7" placeholder="Paste one or several, separated by blank lines"></textarea><div style="margin-top:8px"><button class="btn pri" onclick="addVoice()">Save samples</button></div><div class="tm" id="v-info"></div></div>
+ <div class="card"><h3 style="margin-top:0">Draft → my final version</h3><div class="field"><label>Agent's draft</label><textarea id="v-draft" rows="3"></textarea></div><div class="field"><label>What I actually sent</label><textarea id="v-final" rows="3"></textarea></div><button class="btn pri" onclick="addEdit()">Teach the agent</button></div></div>
+ <h3>What the agent has learned about you</h3><div class="card"><pre class="log" id="mem" style="max-height:240px"></pre><div class="row" style="margin-top:8px"><input id="mem-in" class="grow" placeholder="Tell it something to remember (preferences, dislikes, constraints)"><button class="btn" onclick="addMem()">Remember</button></div></div>`}
+async function loadVoice(){const v=await api('/api/voice');const m=await api('/api/memory');if($('v-info'))$('v-info').textContent=`${(v.samples.match(/---/g)||[]).length} sample(s) saved, ${v.edits} edit pair(s) learned.`;if($('mem'))$('mem').textContent=(m.memory||'(nothing learned yet; it learns from what you mark applied or skip)')+(m.tweaks.length?'\n\nScoring tweaks learned:\n'+m.tweaks.map(t=>` ${t.delta>0?'+':''}${t.delta} for /${t.pattern}/ (${t.why||''})`).join('\n'):'')}
+async function addVoice(){const t=$('v-sample').value.trim();if(!t)return;await post('/api/voice',{sample:t});$('v-sample').value='';toast('Saved');loadVoice()}
+async function addEdit(){const d=$('v-draft').value.trim(),f=$('v-final').value.trim();if(!d||!f)return;await post('/api/voice',{draft:d,final:f});$('v-draft').value=$('v-final').value='';toast('Learned');loadVoice()}
+async function addMem(){const t=$('mem-in').value.trim();if(!t)return;await post('/api/memory',{note:t});$('mem-in').value='';loadVoice()}
+/* ---------- usage */
+function usageView(){return `<h2>Usage &amp; cost</h2><p class="sub">Every model call is logged by provider and task. Costs are list-price equivalents; subscriptions are rate-limited rather than billed per token. Set daily budgets in Settings.</p><div id="u-body"><span class="spin"></span>Loading</div>`}
+async function loadUsage(){const u=await api('/api/usage');const el=$('u-body');if(!el)return;const tab=(rows)=>`<table><tr><th>Provider</th><th>Task</th><th>Calls</th><th>Tokens in</th><th>Tokens out</th><th>~Cost</th><th>Time</th></tr>${rows.map(r=>`<tr><td>${esc(r.provider)}</td><td>${esc(r.kind)}</td><td>${r.calls}</td><td>${r.tin.toLocaleString()}</td><td>${r.tout.toLocaleString()}</td><td>$${r.cost}</td><td>${r.secs}s</td></tr>`).join('')||'<tr><td colspan=7 class="tm">no calls</td></tr>'}</table>`;
+ const days=[...new Set(u.daily.map(d=>d.day))];const max=Math.max(1,...days.map(d=>u.daily.filter(x=>x.day==d).reduce((a,x)=>a+x.tokens,0)));
+ const bars=days.map(d=>{const t=u.daily.filter(x=>x.day==d).reduce((a,x)=>a+x.tokens,0);return `<div title="${d}: ${t.toLocaleString()} tokens"><i style="height:${Math.round(t/max*100)}%"></i></div>`}).join('');
+ const provs=[...new Set(u.month.map(r=>r.provider))];const tot=p=>u.today.filter(r=>r.provider==p).reduce((a,r)=>a+r.calls,0);
+ el.innerHTML=`<div class="stats">${provs.map(p=>`<div class="stat"><b>${tot(p)}</b><span>${esc(p)} calls today</span></div>`).join('')||'<div class="stat"><b>0</b><span>calls today</span></div>'}</div><h3>Last 14 days (tokens)</h3><div class="card"><div class="bars">${bars||'<span class="tm">no data</span>'}</div></div><h3>Today</h3><div class="card">${tab(u.today)}</div><h3>Last 7 days</h3><div class="card">${tab(u.week)}</div><h3>Last 30 days</h3><div class="card">${tab(u.month)}</div>`}
+/* ---------- settings */
+function settingsView(){return `<h2>Settings</h2><p class="sub">Choose which model does which job, how often the agent runs, and how much it may use. Changes apply to the next run. Your workspace: <code id="home"></code></p><div id="s-body"><span class="spin"></span>Loading</div>`}
+const KIND_HELP={triage:'Judge many postings quickly',today:'Daily plan',ingest:'Read pasted opportunities',chat:'Chat and the agent loop',reflect:'Update memory from outcomes',packet:'Cover letter, answers, research of the role',outreach:'Write messages in your voice',referral:'Find people to contact',resume:'Tailor resume advice',scout:'Open-web scouting',fill:'Fill forms (needs a browser-capable provider)',linkedin:'Read-only LinkedIn scouting (browser)',yc:'YC profile (browser)',default:'Anything else'};
+async function loadSettings(){CFG=await api('/api/settings');const el=$('s-body');if(!el)return;$('home').textContent=CFG.home;const s=CFG.settings,rt=s.llm.routing;
+ const prov=CFG.providers;const pOpts=sel0=>['auto',...prov.map(p=>p.name)].map(n=>`<option ${n==sel0?'selected':''}>${n}</option>`).join('');
+ const pcards=prov.map(p=>`<div class="card"><div class="row"><b>${esc(p.label)}</b><span class="badge ${p.ready?'on':'off'}">${p.ready?'ready':'not set up'}</span>${p.verified?'':'<span class="badge exp">adapter untested</span>'}<span class="grow"></span><button class="btn sm" ${p.ready?'':'disabled'} onclick="testProv('${p.name}',this)">Test</button></div>
+  <div class="tm">${p.web?'native web search &middot; ':''}${p.browser?'drives a browser &middot; ':''}${p.why?esc(p.why)+' &middot; ':''}${p.models.length?p.models.length+' models':''} ${esc(p.note||'')}</div></div>`).join('');
+ const rtrows=CFG.kinds.map(k=>{const r=rt[k]||rt.default;const p=prov.find(x=>x.name==r.provider);const ml=p?p.models:[];return `<tr><td><b>${k}</b><div class="tm">${esc(KIND_HELP[k]||'')}</div></td><td><select id="rp-${k}" onchange="rtChange('${k}')">${pOpts(r.provider)}</select></td>
+  <td><input id="rm-${k}" list="ml-${k}" value="${esc(r.model||'')}" placeholder="provider default" style="min-width:190px"><datalist id="ml-${k}">${ml.map(m=>`<option value="${esc(m)}">`).join('')}</datalist></td><td><select id="re-${k}">${['','low','medium','high','xhigh','max'].map(e=>`<option ${e==(r.effort||'')?'selected':''} value="${e}">${e||'default'}</option>`).join('')}</select></td></tr>`}).join('');
+ const sc=CFG.schedule;const num=(id,v,w=80)=>`<input id="${id}" type="number" value="${v}" style="width:${w}px">`;const chk=(id,v)=>`<input id="${id}" type="checkbox" ${v?'checked':''}>`;
+ el.innerHTML=`<h3>Model providers</h3><div class="two">${pcards}</div><div class="tm" style="margin-top:6px">API providers need their key in an environment variable (shown when not ready). Antigravity (agy) and Claude Code work with your logged-in subscriptions.</div>
+ <h3>Which model does which job</h3><div class="card"><table><tr><th>Task</th><th>Provider</th><th>Model</th><th>Effort</th></tr>${rtrows}</table><div class="tm" style="margin-top:8px">Tip: use a cheaper/faster model for triage, today, ingest and chat; your best writer for outreach, packets and referrals. Form filling and LinkedIn need a browser-capable provider (Claude Code). If a provider fails or hits its budget, the fallbacks are tried: <b>${esc((s.llm.fallbacks||[]).join(' → '))}</b>.</div>
+ <div class="row" style="margin-top:10px"><button class="btn pri" onclick="saveRouting()">Save routing</button><button class="btn" onclick="run('bench')">Benchmark providers on my data</button><button class="btn" onclick="showBench()">Show last benchmark</button></div><pre class="log" id="bench" style="display:none;margin-top:10px"></pre></div>
+ <h3>Automation &amp; frequency</h3><div class="card"><div class="two">
+  <div class="field"><label>Run every (minutes)</label><div class="row">${num('s-poll',s.poll_every_minutes)}<button class="btn sm" onclick="setInterval_()">Apply to scheduler</button></div><div class="tm">${sc.supported?`Scheduler: ${esc(sc.installed?sc.status:'not installed')}${sc.next?' &middot; next '+esc(sc.next):''}${sc.interval?' &middot; every '+esc(sc.interval):''}`:'Use cron on this OS'}</div>
+   <div class="row" style="margin-top:6px"><button class="btn sm" onclick="run('enable-schedule')">Enable</button><button class="btn sm" onclick="run('disable-schedule')">Pause</button></div></div>
+  <div class="field"><label>Form filling</label><div class="row"><label>${chk('s-autofill',s.auto_fill)} auto-fill forms (never submits)</label></div><div class="row"><span>max/day</span>${num('s-fills',s.max_fills_per_day,60)}<span>hours</span>${num('s-fh0',s.fill_window_local_hours[0],50)}<span>to</span>${num('s-fh1',s.fill_window_local_hours[1],50)}</div></div>
+  <div class="field"><label>Daily limits (model calls / items)</label><div class="row"><span>triage calls</span>${num('s-tri',s.max_triage_calls_per_day,60)}<span>batch</span>${num('s-batch',s.triage_batch_size,55)}<span>packets</span>${num('s-pk',s.max_packets_per_day,60)}<span>referral plans</span>${num('s-rf',s.max_referrals_per_day,60)}</div></div>
+  <div class="field"><label>LinkedIn scouting (read-only, uses your logged-in browser)</label><div class="row"><label>${chk('s-li',s.linkedin_browse)} enabled</label><span>companies/day</span>${num('s-lim',s.max_linkedin_per_day,60)}</div><div class="tm">Automated use of a logged-in account can violate LinkedIn's terms; keep the cap low.</div></div>
+  <div class="field"><label>Scouting &amp; filters</label><div class="row"><span>web scout every</span>${num('s-scout',s.scout_every_days,55)}<span>days</span><span>min score for AI review</span>${num('s-min',s.min_heuristic_score_for_llm,60)}<span>min fit for packet</span>${num('s-pmf',s.packet_min_fit,60)}</div></div>
+  <div class="field"><label>Writing &amp; research</label><div class="row"><label>${chk('s-hum',s.humanize.enabled)} humanize messages (lint + rewrite)</label><label>${chk('s-mem',s.memory.enabled)} learn from my outcomes</label></div><div class="row"><span>web search</span><select id="s-web"><option value="ddg" ${s.web.search_backend=='ddg'?'selected':''}>DuckDuckGo (no key)</option><option value="brave" ${s.web.search_backend=='brave'?'selected':''}>Brave API (key in $${esc(s.web.brave_api_key_env)})</option></select></div></div>
+  <div class="field"><label>Notifications</label><div class="row"><label>${chk('s-toast',s.notify.windows_toast)} desktop toasts</label></div><div class="row"><span>phone push (ntfy topic)</span><input id="s-ntfy" value="${esc(s.notify.ntfy_topic||'')}" style="width:180px" placeholder="optional"></div></div></div>
+  <div class="field"><label>Daily budgets per provider (0 = unlimited; the agent falls back to another provider when reached)</label><div class="row">${prov.filter(p=>p.ready).map(p=>{const b=(s.llm.budgets||{})[p.name]||{};return `<span>${p.name}</span>${num('bc-'+p.name,b.daily_calls||0,64)}<span>calls</span>${num('bt-'+p.name,b.daily_tokens||0,90)}<span>tokens</span>`}).join('')}</div></div>
+  <button class="btn pri" onclick="saveAuto()">Save settings</button></div>`}
+function rtChange(k){const p=CFG.providers.find(x=>x.name==$('rp-'+k).value);$('ml-'+k).innerHTML=(p?p.models:[]).map(m=>`<option value="${esc(m)}">`).join('')}
+async function saveRouting(){const routing={};CFG.kinds.forEach(k=>routing[k]={provider:$('rp-'+k).value,model:$('rm-'+k).value.trim(),effort:$('re-'+k).value});await post('/api/settings',{patch:{llm:{routing}}});toast('Routing saved')}
+async function saveAuto(){const g=id=>$(id),n=id=>+g(id).value,b={};CFG.providers.filter(p=>p.ready).forEach(p=>{b[p.name]={daily_calls:n('bc-'+p.name),daily_tokens:n('bt-'+p.name)}});
+ await post('/api/settings',{patch:{auto_fill:g('s-autofill').checked,max_fills_per_day:n('s-fills'),fill_window_local_hours:[n('s-fh0'),n('s-fh1')],max_triage_calls_per_day:n('s-tri'),triage_batch_size:n('s-batch'),max_packets_per_day:n('s-pk'),max_referrals_per_day:n('s-rf'),
+ linkedin_browse:g('s-li').checked,max_linkedin_per_day:n('s-lim'),scout_every_days:n('s-scout'),min_heuristic_score_for_llm:n('s-min'),packet_min_fit:n('s-pmf'),humanize:{enabled:g('s-hum').checked},memory:{enabled:g('s-mem').checked},web:{search_backend:g('s-web').value},
+ notify:{windows_toast:g('s-toast').checked,ntfy_topic:g('s-ntfy').value.trim()},llm:{budgets:b}}});toast('Settings saved')}
+async function setInterval_(){const m=+$('s-poll').value;if(m<5)return toast('Minimum 5 minutes');const r=await post('/api/schedule',{minutes:m});toast('Scheduler updated');setTimeout(loadSettings,1200)}
+async function testProv(n,btn){btn.innerHTML='<span class="spin"></span>';const r=await post('/api/provider-test',{name:n});btn.textContent='Test';toast(r.ok?`${n}: OK in ${r.seconds}s`:`${n}: ${esc(r.error||'failed')}`)}
+async function showBench(){const r=await api('/api/bench');const p=$('bench');p.style.display='block';p.textContent=r.report||'No benchmark yet today. Press "Benchmark providers on my data" (it spends a few calls per provider).'}
+/* ---------- help */
+function helpView(){return `<h2>Help</h2><p class="sub">Everything in two minutes. <button class="btn sm pri" onclick="startTour()">Take the guided tour</button></p><div class="two">
+ <div class="card"><h3 style="margin-top:0">The loop</h3><div class="md"><p>JobAgent polls hundreds of company job boards, filters them against your profile, asks a model to judge the best ones, prepares a cover letter and answers, plans who to contact for a referral, and can fill the form. <b>You press Submit.</b></p></div></div>
+ <div class="card"><h3 style="margin-top:0">Your daily routine</h3><div class="md"><ul><li><b>Today</b>: read the plan, tick tasks.</li><li><b>Ready to submit</b>: review the filled tab, submit, mark applied.</li><li><b>Best matches</b>: press <i>Prepare application</i> on the ones you like.</li><li>Open a card's <i>Details</i> to copy messages from <i>Referral &amp; outreach</i>.</li></ul></div></div>
+ <div class="card"><h3 style="margin-top:0">Found something yourself?</h3><div class="md"><p>Use <b>Inbox</b>: paste a link or text plus your context. Or just tell the <b>Ask the agent</b> chat. Your items jump the queue.</p></div></div>
+ <div class="card"><h3 style="margin-top:0">Messages that sound like you</h3><div class="md"><p>Paste messages you really sent in <b>My voice</b>, and the draft→final edits you make. Drafts are also linted for AI tells (stock phrases, dashes, lists) and rewritten when needed.</p></div></div>
+ <div class="card"><h3 style="margin-top:0">Which model?</h3><div class="md"><p><b>Settings → Which model does which job</b>. Use any mix: Claude Code, Antigravity/Gemini, Codex, Gemini CLI, any OpenAI-compatible API, Ollama, Hermes, oh-my-pi, or a custom command. Form filling and LinkedIn need a browser-capable provider. Use <i>Benchmark</i> to compare providers on your own data.</p></div></div>
+ <div class="card"><h3 style="margin-top:0">Safety</h3><div class="md"><ul><li>Forms are filled, <b>never submitted</b> (a page guard enforces it).</li><li>LinkedIn is read-only; <b>you send every message</b>.</li><li>Prestige roles go to the <b>Watchlist</b>: referral first, never auto-applied.</li><li>Your data stays in your workspace folder on this machine.</li></ul></div></div>
+ <div class="card"><h3 style="margin-top:0">Keyboard</h3><div class="md"><p><code>/</code> search &middot; <code>Esc</code> close panels</p></div></div></div>`}
+/* ---------- core render */
+function render(){nav();filters();const v=$('view');
+ $('foot').innerHTML=`Today<br><b>${S.budget.triage_calls||0}</b> triage &middot; <b>${S.budget.packets||0}</b> packets &middot; <b>${S.budget.referrals||0}</b> referrals &middot; <b>${S.budget.fills||0}</b> fills<br>${S.running.length?`<span class="spin"></span>${esc(S.running.join(', '))}`:'idle'}`;
+ $('cyc').innerHTML=S.running.includes('cycle')?'<span class="spin"></span>Running...':'Run full cycle';
+ const keep=['inbox','chat','voice','usage','settings'];if(keep.includes(VIEW)&&v.dataset.view==VIEW)return;v.dataset.view=VIEW;
+ if(VIEW=='today')v.innerHTML=today();else if(VIEW=='programs')v.innerHTML=programs();else if(VIEW=='inbox')v.innerHTML=inboxView();else if(VIEW=='chat')v.innerHTML=chatView();else if(VIEW=='voice')v.innerHTML=voiceView();
+ else if(VIEW=='usage')v.innerHTML=usageView();else if(VIEW=='settings')v.innerHTML=settingsView();else if(VIEW=='help')v.innerHTML=helpView();else if(VIEW=='log')v.innerHTML='<h2>Activity</h2><p class="sub">Latest agent log</p><pre class="log" id="logbox"></pre>';
+ else{const r=rows(),t=NAV.find(n=>n[0]==VIEW)[1];v.innerHTML=`<h2>${t}</h2><p class="sub">${r.length} shown</p><div class="grid">${r.slice(0,120).map(card).join('')||'<div class="empty">Nothing here yet.</div>'}</div>`}
+ if(!keep.includes(VIEW))v.dataset.view=''}
+async function load(){try{S=await api('/api/state');if(S.setup_needed)showSetup();render()}catch(e){}}
+async function run(cmd,arg=''){const r=await post('/api/run',{cmd,arg});if(r.error)toast(esc(r.error));else toast('Started: '+esc(r.started));setTimeout(load,700)}
+async function loadLog(){const t=await (await fetch('/api/log')).text();const b=$('logbox');if(b){b.textContent=t;b.scrollTop=b.scrollHeight}}
+/* ---------- drawer */
 function md(t){const lines=t.split('\n');let h='',list=false,para=[];const inl=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/(https?:\/\/[^\s<)]+)/g,'<a href="$1" target="_blank">$1</a>');
- const flush=()=>{if(para.length){const txt=para.join(' ');h+=`<div class="blk"><p>${inl(txt)}</p><button class="btn sm cp" onclick="cp(this)" data-t="${esc(txt)}">Copy</button></div>`;para=[]}};
- const endl=()=>{if(list){h+='</ul>';list=false}};
- for(const l of lines){if(/^#{1,3} /.test(l)){flush();endl();const n=l.match(/^#+/)[0].length;h+=`<h${n}>${inl(l.replace(/^#+ /,''))}</h${n}>`}
-  else if(/^\s*[-*] /.test(l)){flush();if(!list){h+='<ul>';list=true}h+=`<li>${inl(l.replace(/^\s*[-*] /,''))}</li>`}
-  else if(!l.trim()){flush();endl()}else{endl();para.push(l.trim())}}flush();endl();return h}
+ const flush=()=>{if(para.length){const txt=para.join(' ');h+=`<div class="blk"><p>${inl(txt)}</p><button class="btn sm cp" onclick="cp(this)" data-t="${esc(txt)}">Copy</button></div>`;para=[]}};const endl=()=>{if(list){h+='</ul>';list=false}};
+ for(const l of lines){if(/^#{1,3} /.test(l)){flush();endl();const n=l.match(/^#+/)[0].length;h+=`<h${n}>${inl(l.replace(/^#+ /,''))}</h${n}>`}else if(/^\s*[-*] /.test(l)){flush();if(!list){h+='<ul>';list=true}h+=`<li>${inl(l.replace(/^\s*[-*] /,''))}</li>`}else if(!l.trim()){flush();endl()}else{endl();para.push(l.trim())}}flush();endl();return h}
 function cp(b){navigator.clipboard.writeText(b.dataset.t).then(()=>toast('Copied'))}
-const DT=[['README','Application'],['COVER','Cover letter'],['REFERRAL','Referral & outreach'],['FILL','Form fill report']];
+const DT=[['README','Application'],['COVER','Cover letter'],['REFERRAL','Referral & outreach'],['RESUME','Resume'],['FILL','Form fill report']];
 async function openDrawer(id){const j=S.jobs.find(x=>x.id==id);if(!j)return;CUR=j;DTAB='README';
- document.getElementById('dh').innerHTML=`<div class="av" style="background:${col(j.company)}">${esc(j.company[0])}</div><div><div class="co">${esc(j.company)} &middot; ${esc(j.location||'')}</div><div class="title">${esc(j.title)}</div></div><div class="x"><a class="btn sm" href="${esc(j.url)}" target="_blank">Open posting</a> <button class="btn sm ghost" onclick="closeDrawer()">Close</button></div>`;
- document.getElementById('drawer').classList.add('on');document.getElementById('scrim').classList.add('on');drawerTab()}
-async function drawerTab(){document.getElementById('dt').innerHTML=DT.map(([k,l])=>`<button class="${DTAB==k?'on':''}" onclick="DTAB='${k}';drawerTab()">${l}</button>`).join('');
- const b=document.getElementById('db');b.innerHTML='<span class="spin"></span>Loading';const r=await api('/api/packet?id='+encodeURIComponent(CUR.id));
- if(!r.exists){b.innerHTML=`<div class="empty">No application packet yet.<br><br><button class="btn pri" onclick="run('packet','${esc(CUR.id)}');closeDrawer()">Prepare application</button><br><br><span class=sub>${esc(CUR.reason||'')}</span></div>`;return}
- const t=r.files[DTAB]||'';b.innerHTML=t?(DTAB=='COVER'?`<div class="blk" style="white-space:pre-wrap">${esc(t)}<button class="btn sm cp" onclick="cp(this)" data-t="${esc(t)}">Copy</button></div>`:md(t)):`<div class="empty">Not generated yet.<br><br><button class="btn pri" onclick="run('${DTAB=='REFERRAL'?'referral':DTAB=='FILL'?'fill':'packet'}','${esc(CUR.id)}')">Generate</button></div>`}
-function closeDrawer(){document.getElementById('drawer').classList.remove('on');document.getElementById('scrim').classList.remove('on')}
+ $('dh').innerHTML=`<div class="av" style="background:${col(j.company)}">${esc(j.company[0])}</div><div><div class="co">${esc(j.company)} &middot; ${esc(j.location||'')}</div><div class="title">${esc(j.title)}</div></div><div class="x"><a class="btn sm" href="${esc(j.url)}" target="_blank">Open posting</a> <button class="btn sm ghost" onclick="closeDrawer()">Close</button></div>`;
+ $('drawer').classList.add('on');$('scrim').classList.add('on');drawerTab()}
+async function drawerTab(){$('dt').innerHTML=DT.map(([k,l])=>`<button class="${DTAB==k?'on':''}" onclick="DTAB='${k}';drawerTab()">${l}</button>`).join('');
+ const b=$('db');b.innerHTML='<span class="spin"></span>Loading';const r=await api('/api/packet?id='+encodeURIComponent(CUR.id));
+ const gen={README:'packet',COVER:'packet',REFERRAL:'referral',RESUME:'resume',FILL:'fill'}[DTAB];
+ if(!r.exists){b.innerHTML=`<div class="empty">Nothing prepared yet.<br><br><button class="btn pri" onclick="run('packet','${esc(CUR.id)}');closeDrawer()">Prepare application</button> <button class="btn" onclick="run('referral','${esc(CUR.id)}');closeDrawer()">Plan referral</button><br><br><span class="sub">${esc(CUR.reason||'')}</span></div>`;return}
+ const t=r.files[DTAB]||'';b.innerHTML=t?(DTAB=='COVER'?`<div class="blk" style="white-space:pre-wrap">${esc(t)}<button class="btn sm cp" onclick="cp(this)" data-t="${esc(t)}">Copy</button></div>`:md(t)):`<div class="empty">Not generated yet.<br><br><button class="btn pri" onclick="run('${gen}','${esc(CUR.id)}');closeDrawer()">Generate</button></div>`}
+function closeDrawer(){$('drawer').classList.remove('on');$('scrim').classList.remove('on')}
+/* ---------- tour + setup */
+const TOUR=[['#nav-today','Today','Your daily home: headline numbers, forms waiting for you, the day\'s plan and outreach to do.','right'],['#nav-ready','Ready to submit','Applications the agent filled in a separate browser. You review and press Submit yourself, then mark it applied.','right'],
+ ['#nav-match','Best matches','Jobs worth applying to. Press "Prepare application" for the cover letter, answers and resume pick.','right'],['#nav-watch','Watchlist','Prestige roles (fellowships, residencies, pre-docs) are never auto-applied. Referral first.','right'],
+ ['#nav-inbox','Inbox','Found a job elsewhere (X, a friend, a newsletter)? Paste it here with your context.','right'],['#nav-chat','Ask the agent','Chat about your pipeline. It proposes actions; you confirm each.','right'],
+ ['#nav-voice','My voice','Teach it how you write so drafts need little editing.','right'],['#nav-settings','Settings','Pick the model for each job (Claude, Gemini/Antigravity, Codex, APIs, local models...), frequency, limits and budgets.','right'],
+ ['#cyc','Run full cycle','Does everything once: fetch jobs, judge, prepare, plan referrals. A scheduler can run it for you in the background.','bottom'],['#t-search','Search','Press / anywhere to search company, title or location.','bottom']];
+function startTour(){TOURI=0;$('tour').classList.add('on');tourStep()}
+function endTour(){$('tour').classList.remove('on');try{localStorage.setItem('ja-tour','1')}catch(e){}}
+function tourStep(){const s=TOUR[TOURI];const el=document.querySelector(s[0]);if(!el){TOURI++;if(TOURI<TOUR.length)return tourStep();return endTour()}
+ $('side').classList.add('on');el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect(),h=$('hole'),t=$('tip');h.style.cssText=`left:${r.left-6}px;top:${r.top-6}px;width:${r.width+12}px;height:${r.height+12}px`;
+ t.innerHTML=`<h4>${s[1]}</h4><p>${s[2]}</p><div class="row"><span class="tm">${TOURI+1} / ${TOUR.length}</span><span class="grow"></span><button class="btn sm ghost" onclick="endTour()">Skip</button>${TOURI?'<button class="btn sm" onclick="TOURI--;tourStep()">Back</button>':''}<button class="btn sm pri" onclick="${TOURI==TOUR.length-1?'endTour()':'TOURI++;tourStep()'}">${TOURI==TOUR.length-1?'Done':'Next'}</button></div>`;
+ const tw=Math.min(360,innerWidth*.92);let left=s[3]=='right'?r.right+16:r.left;let top=s[3]=='right'?Math.max(12,r.top):r.bottom+16;if(left+tw>innerWidth-8)left=Math.max(8,innerWidth-tw-8);t.style.left=left+'px';t.style.top=Math.min(top,innerHeight-190)+'px'}
+function showSetup(){if($('setup').classList.contains('on'))return;$('setup').classList.add('on');$('setupbox').innerHTML=`<h2>Welcome to JobAgent</h2><p class="sub">Tell it who you are. This stays on your machine, in <code>${esc(S.home)}</code>. You can refine everything later.</p>
+ ${[['name','Full name'],['email','Email'],['phone','Phone (optional)'],['location','City, country'],['linkedin','LinkedIn URL (optional)'],['github','GitHub URL (optional)'],['website','Website / portfolio (optional)'],['education','Education (degree, school, expected graduation)'],['graduation','Graduation (YYYY-MM)'],['home_country','Country you are authorised to work in'],['resume_pdf','Path to your resume PDF (optional)']].map(([k,l])=>`<div class="field"><label>${l}</label><input id="su-${k}"></div>`).join('')}
+ <div class="field"><label>About you in 2-3 sentences: what you build, what you want next</label><textarea id="su-summary" rows="3"></textarea></div><div class="field"><label>Your strongest projects/experience, one per line ("Name: what it is + one measured result")</label><textarea id="su-projects" rows="4"></textarea></div>
+ <button class="btn pri" onclick="saveSetup()">Save and start the tour</button>`}
+async function saveSetup(){const keys=['name','email','phone','location','linkedin','github','website','education','graduation','home_country','resume_pdf','summary','projects'];const b={};keys.forEach(k=>b[k]=$('su-'+k).value);if(!b.name.trim())return toast('Name is required');
+ await post('/api/setup',b);$('setup').classList.remove('on');toast('Profile saved');await load();startTour()}
 load();setInterval(load,12000);setInterval(()=>{if(VIEW=='log')loadLog()},4000);
+try{if(!localStorage.getItem('ja-tour'))setTimeout(()=>{if(!S.setup_needed)startTour()},900)}catch(e){}
 </script>
 </body>
 </html>

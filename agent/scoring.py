@@ -1,6 +1,6 @@
 """Cheap heuristic pre-filter. No LLM. Decides what is worth spending Claude on."""
 import re
-from common import FILTERS as F
+from common import FILTERS as F, PROFILE
 
 TIER_BOOST = {"S": 14, "A": 9, "B": 4, "C": 0}
 
@@ -15,11 +15,15 @@ def _count(patterns, text):
 
 def classify_location(loc):
     t = (loc or "").lower()
-    if any(re.search(r"(?<![a-z])" + w + r"(?![a-z])", t) for w in F["india_locations"]):
-        return "india"
+    homes = list(F.get("home_locations") or F.get("india_locations") or [])
+    hc = ((PROFILE.get("preferences") or {}).get("home_country") or "").strip().lower()
+    if hc:
+        homes.append(hc)
+    if any(re.search(r"(?<![a-z])" + re.escape(w) + r"(?![a-z])", t) for w in homes):
+        return "india"  # label kept for compatibility: means "in the candidate's home country"
     if any(w in t for w in F["remote_markers"]):
         # "Remote - US" etc. is not really open to someone in India
-        if _any(F["remote_restricted"], t) and not re.search(r"india|apac|asia|worldwide|anywhere|global", t):
+        if _any(F["remote_restricted"], t) and not re.search(r"apac|asia|worldwide|anywhere|global|" + re.escape(((PROFILE.get("preferences") or {}).get("home_country") or "zzzz").lower()), t):
             return "relocate"
         return "remote"
     return "relocate"
@@ -91,7 +95,7 @@ def score(job):
         s -= 6  # unknown seniority, not marked early-career
     r["visa"] = visa_status(desc + " " + job["location"])
     loc_l = job["location"].lower()
-    if r["loc_class"] == "relocate" and any(w in loc_l for w in F.get("drop_locations", [])) and not any(w in loc_l for w in F["india_locations"]):
+    if r["loc_class"] == "relocate" and any(w in loc_l for w in F.get("drop_locations", [])) and not any(w in loc_l for w in (F.get("home_locations") or F.get("india_locations") or [])):
         r["drop"] = "location not realistic (needs local work permit)"
         return r
     if r["loc_class"] == "relocate" and r["visa"] != "yes" and re.search(r"\bintern|co-?op|apprentice", title) and re.search(r"\b(usa|united states|canada|united kingdom|uk)\b|, (ca|ny|wa|tx|ma)\b", loc_l + " "):
@@ -103,5 +107,12 @@ def score(job):
         s -= 15
     s += {"india": 14, "remote": 9, "relocate": -6}[r["loc_class"]]
     s += min(14, 2 * _count(F["niche_keywords"], title + " " + desc[:3000]))
+    try:
+        import memory
+        for tw in memory.score_tweaks():
+            if re.search(tw["pattern"], title):
+                s += tw["delta"]
+    except Exception:
+        pass
     r["score"] = max(0.0, min(100.0, s))
     return r

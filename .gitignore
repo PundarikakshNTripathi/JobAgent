@@ -1,10 +1,14 @@
-# runtime state, personal data, generated output
-data/
-out/
-logs/
+# The code folder never contains personal data. Your workspace (profile, database, outputs, logs, browser profile) lives elsewhere:
+#   $JOBAGENT_HOME, or the path in .jobagent_home, or ~/JobAgent
+.jobagent_home
+# legacy in-repo copies from before the workspace split (safe to delete once you restart the GUI)
+/data/
+/out/
+/logs/
+/config/
+/research/
 .playwright-mcp/
 __pycache__/
 *.pyc
-# personal facts and contact details stay local; copy profile.example.json -> profile.json
-config/profile.json
-research/ats_probe.json
+*.pdf
+*.env

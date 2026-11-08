@@ -1,17 +1,21 @@
 """Local web GUI for JobAgent (stdlib only). `python agent/run.py gui` -> http://127.0.0.1:8777
-Binds to localhost only; state-changing requests need a custom header (basic CSRF protection) and only whitelisted commands run."""
-import http.server, json, os, re, subprocess, sys, threading, webbrowser, urllib.parse
+Binds to localhost only; every state-changing request needs a custom header (basic CSRF protection); only whitelisted commands run."""
+import http.server, json, os, re, subprocess, sys, threading, webbrowser, urllib.parse, datetime as dt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import db, ROOT, OUT, LOGS, SETTINGS, meta_get, budget_used  # noqa: E402
+import common
+from common import db, CORE, HOME, OUT, LOGS, DATA, meta_get, budget_used  # noqa: E402
 
-PORT = SETTINGS.get("gui_port", 8777)
-RUN_PY = os.path.join(ROOT, "agent", "run.py")
-ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "today": False, "dashboard": False, "usage": False, "yc-profile": False,
-           "packet": True, "referral": True, "fill": True, "linkedin": True, "mark": True, "enable-schedule": False, "disable-schedule": False}
-JOBS = {}   # name -> Popen
-_lock = threading.Lock()
-
+RUN_PY = os.path.join(CORE, "agent", "run.py")
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui_static", "index.html")
+# command -> needs an argument?
+ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "today": False, "dashboard": False, "usage": False, "yc-profile": False, "inbox": False,
+           "reflect": False, "bench": False, "enable-schedule": False, "disable-schedule": False, "packet": True, "referral": True, "resume": True, "fill": True,
+           "linkedin": True, "mark": True, "agent": True}
+SETTING_KEYS = {"poll_every_minutes", "min_heuristic_score_for_llm", "instant_alert_score", "max_triage_calls_per_day", "triage_batch_size", "max_triage_per_cycle", "triage_desc_chars",
+                "max_packets_per_day", "packet_min_fit", "max_referrals_per_day", "max_linkedin_per_day", "linkedin_browse", "max_fills_per_day", "auto_fill", "fill_window_local_hours",
+                "scout_every_days", "guard_minutes", "notify", "web", "humanize", "memory", "agent_mode", "llm", "include_new_grad_list", "recent_days_github_lists"}
+JOBS, _lock, CHAT_BUSY = {}, threading.Lock(), {"on": False}
+_agy_cache = {"t": 0, "models": []}
 
 
 def page():
@@ -19,38 +23,99 @@ def page():
         return f.read()
 
 
+def jread(name, default):
+    try:
+        return json.load(open(os.path.join(OUT, name), encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
 def packet_files(job_id):
     c = db()
-    r = c.execute("SELECT dir FROM packets WHERE job_id=?", (job_id,)).fetchone()
+    r = c.execute("SELECT dir FROM packets WHERE job_id=?", (job_id,)).fetchone() or c.execute("SELECT dir FROM referrals WHERE job_id=?", (job_id,)).fetchone()
     if not r or not r["dir"] or not os.path.isdir(r["dir"]) or not os.path.abspath(r["dir"]).startswith(os.path.abspath(OUT)):
         return {"exists": False, "files": {}}
     d = r["dir"]
     rd = lambda n: open(os.path.join(d, n), encoding="utf-8").read() if os.path.exists(os.path.join(d, n)) else ""
-    return {"exists": True, "files": {"README": rd("README.md"), "COVER": rd("cover_letter.txt"), "REFERRAL": rd("REFERRAL.md"), "FILL": rd("FILL_REPORT.md")}}
+    files = {"README": rd("README.md"), "COVER": rd("cover_letter.txt"), "REFERRAL": rd("REFERRAL.md"), "RESUME": rd("RESUME.md"), "FILL": rd("FILL_REPORT.md")}
+    return {"exists": any(files.values()), "files": files, "dir": d}
 
 
 def state():
     c = db()
-    rows = c.execute("""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.score,j.loc_class,j.visa,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,p.dir,w.note watch_note
+    rows = c.execute("""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.score,j.loc_class,j.visa,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,
+                               p.dir,w.note watch_note, (SELECT 1 FROM referrals r WHERE r.job_id=j.id) has_ref
                         FROM jobs j LEFT JOIN triage t ON t.job_id=j.id LEFT JOIN packets p ON p.job_id=j.id LEFT JOIN watch w ON w.job_id=j.id
                         WHERE j.active=1 AND j.status NOT IN ('skipped','dismissed','ineligible') AND (j.status!='new' OR j.score>=65)
                         ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 1500""").fetchall()
     progs = c.execute("SELECT name,org,kind,window,eligibility,url FROM programs ORDER BY added DESC").fetchall()
-    today_md, plan = "", None
-    pj = os.path.join(OUT, "today.json")
-    if os.path.exists(pj):
-        try:
-            plan = json.load(open(pj, encoding="utf-8"))
-        except json.JSONDecodeError:
-            plan = None
-    tp = os.path.join(OUT, "today.md")
-    if os.path.exists(tp):
-        today_md = open(tp, encoding="utf-8").read()
     with _lock:
-        running = [k for k, p in JOBS.items() if p.poll() is None]
-    return {"jobs": [dict(r) for r in rows], "programs": [dict(r) for r in progs], "last_poll": meta_get(c, "last_poll"),
-            "active": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0],
-            "budget": {k: budget_used(c, k) for k in ("triage_calls", "packets", "referrals", "fills", "scout", "linkedin")}, "running": running, "today": today_md, "day": __import__("datetime").date.today().isoformat(), "plan": plan}
+        running = [k for k, p in JOBS.items() if p.poll() is None] + (["chat"] if CHAT_BUSY["on"] else [])
+    tp = os.path.join(OUT, "today.md")
+    return {"jobs": [dict(r) for r in rows], "programs": [dict(r) for r in progs], "last_poll": meta_get(c, "last_poll"), "setup_needed": common.needs_setup(),
+            "active": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0], "running": running, "day": dt.date.today().isoformat(), "plan": jread("today.json", None),
+            "budget": {k: budget_used(c, k) for k in ("triage_calls", "packets", "referrals", "fills", "scout", "linkedin")},
+            "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME}
+
+
+def providers_info():
+    import llm
+    now = dt.datetime.now().timestamp()
+    if now - _agy_cache["t"] > 600:
+        _agy_cache.update(t=now, models=llm.agy_models() if llm.available("agy")[0] else [])
+    out = []
+    for n, p in llm.registry().items():
+        ok, why = llm.available(n)
+        models = _agy_cache["models"] if n == "agy" else p.get("models", [])
+        out.append({"name": n, "label": p.get("label", n), "type": p["type"], "ready": ok, "why": "" if ok else why, "verified": p.get("verified", False), "web": p["capabilities"].get("web", False),
+                    "browser": p["capabilities"].get("browser", False), "models": models, "efforts": p.get("efforts", []), "note": p.get("note", ""),
+                    "needs_key": bool(p.get("api_key_env")), "key_env": p.get("api_key_env", "")})
+    return out
+
+
+def usage_info():
+    c = db()
+    q = lambda days: [dict(r) for r in c.execute("""SELECT COALESCE(provider,'claude') provider, kind, COUNT(*) calls, COALESCE(SUM(inp+cache_create+cache_read),0) tin, COALESCE(SUM(outp),0) tout,
+                                                   ROUND(COALESCE(SUM(cost),0),3) cost, ROUND(COALESCE(SUM(secs),0)) secs FROM llm_log WHERE ts>=date('now',?,'localtime') GROUP BY provider, kind
+                                                   ORDER BY provider, calls DESC""", (f"-{days} day",)).fetchall()]
+    daily = [dict(r) for r in c.execute("""SELECT substr(ts,1,10) day, COALESCE(provider,'claude') provider, COUNT(*) calls, COALESCE(SUM(inp+cache_create+cache_read+outp),0) tokens
+                                           FROM llm_log WHERE ts>=date('now','-13 day','localtime') GROUP BY day, provider ORDER BY day""").fetchall()]
+    return {"today": q(0), "week": q(7), "month": q(30), "daily": daily, "budgets": common.SETTINGS["llm"].get("budgets", {})}
+
+
+def schedule_info():
+    if os.name != "nt":
+        return {"supported": False}
+    r = subprocess.run(["schtasks", "/Query", "/TN", "JobAgentCycle", "/V", "/FO", "LIST"], capture_output=True, text=True)
+    txt = r.stdout or ""
+    g = lambda k: (re.search(rf"^{k}:\s*(.*)$", txt, re.M) or [None, ""])[1].strip()
+    return {"supported": True, "installed": r.returncode == 0, "status": g("Status"), "next": g("Next Run Time"), "last": g("Last Run Time"), "result": g("Last Result"), "interval": g("Repeat: Every"),
+            "minutes_setting": common.SETTINGS.get("poll_every_minutes")}
+
+
+def spawn(cmd, arg=""):
+    args = [sys.executable, RUN_PY, cmd] + (arg.split() if cmd == "mark" else ([arg] if arg else []))
+    key = f"{cmd} {arg[:30]}".strip()
+    with _lock:
+        p = JOBS.get(key)
+        if p and p.poll() is None:
+            return {"error": "already running"}
+        logf = open(os.path.join(LOGS, "gui_runs.log"), "a", encoding="utf-8")
+        JOBS[key] = subprocess.Popen(args, stdout=logf, stderr=subprocess.STDOUT, cwd=CORE)
+    return {"started": key}
+
+
+def chat_thread(text):
+    import inbox
+    try:
+        CHAT_BUSY["on"] = True
+        inbox.reply(text)
+    except Exception as e:
+        c = db()
+        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (common.now(), "agent", f"(failed: {str(e)[:200]})"))
+        c.commit()
+    finally:
+        CHAT_BUSY["on"] = False
 
 
 class H(http.server.BaseHTTPRequestHandler):
@@ -66,67 +131,125 @@ class H(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    def _j(self, obj, code=200):
+        self._send(code, json.dumps(obj, default=str))
+
     def _host_ok(self):
-        return (self.headers.get("Host", "").split(":")[0] in ("127.0.0.1", "localhost"))
+        return self.headers.get("Host", "").split(":")[0] in ("127.0.0.1", "localhost")
 
     def do_GET(self):
         if not self._host_ok():
             return self._send(403, "{}")
-        path = urllib.parse.urlparse(self.path).path
-        if path == "/":
-            return self._send(200, page(), "text/html")
-        if path == "/api/state":
-            return self._send(200, json.dumps(state(), default=str))
-        if path == "/api/packet":
-            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            return self._send(200, json.dumps(packet_files((q.get("id") or [""])[0])))
-        if path == "/api/log":
-            lp = os.path.join(LOGS, "agent.log")
-            txt = ""
-            if os.path.exists(lp):
-                with open(lp, encoding="utf-8", errors="replace") as f:
-                    txt = "".join(f.readlines()[-60:])
-            txt = re.sub(r"feed health: .*", "feed health: (omitted)", txt)
-            return self._send(200, txt, "text/plain")
+        u = urllib.parse.urlparse(self.path)
+        path, q = u.path, urllib.parse.parse_qs(u.query)
+        try:
+            if path == "/":
+                return self._send(200, page(), "text/html")
+            if path == "/api/state":
+                return self._j(state())
+            if path == "/api/packet":
+                return self._j(packet_files((q.get("id") or [""])[0]))
+            if path == "/api/log":
+                lp = os.path.join(LOGS, "agent.log")
+                txt = "".join(open(lp, encoding="utf-8", errors="replace").readlines()[-70:]) if os.path.exists(lp) else ""
+                return self._send(200, re.sub(r"feed health: .*", "feed health: (omitted)", txt), "text/plain")
+            if path == "/api/settings":
+                return self._j({"settings": {k: v for k, v in common.SETTINGS.items() if k in SETTING_KEYS}, "providers": providers_info(), "kinds": list(common.SETTINGS["llm"]["routing"].keys()),
+                                "schedule": schedule_info(), "home": HOME})
+            if path == "/api/usage":
+                return self._j(usage_info())
+            if path == "/api/inbox":
+                return self._j([dict(r) for r in db().execute("SELECT * FROM inbox ORDER BY id DESC LIMIT 30").fetchall()])
+            if path == "/api/chat":
+                rows = [dict(r) for r in db().execute("SELECT * FROM chat ORDER BY id DESC LIMIT 60").fetchall()][::-1]
+                return self._j({"messages": rows, "busy": CHAT_BUSY["on"]})
+            if path == "/api/voice":
+                import humanize
+                rd = lambda p: open(p, encoding="utf-8").read() if os.path.exists(p) else ""
+                return self._j({"samples": rd(humanize.VOICE), "edits": len(rd(humanize.EDITS).splitlines())})
+            if path == "/api/memory":
+                import memory
+                return self._j({"memory": memory.memory_text(8000), "skills": memory.list_skills(), "tweaks": memory.score_tweaks(), "outcomes": len(memory.recent_outcomes(500))})
+            if path == "/api/bench":
+                p = os.path.join(OUT, f"bench-{dt.date.today().isoformat()}.md")
+                return self._j({"report": open(p, encoding="utf-8").read() if os.path.exists(p) else ""})
+            if path == "/api/doctor":
+                return self._j({"home": HOME, "providers": providers_info(), "profile": not common.needs_setup()})
+        except Exception as e:
+            return self._j({"error": str(e)[:300]}, 500)
         self._send(404, "{}")
 
     def do_POST(self):
         if not self._host_ok() or self.headers.get("X-JobAgent") != "1":
-            return self._send(403, json.dumps({"error": "forbidden"}))
+            return self._j({"error": "forbidden"}, 403)
         n = int(self.headers.get("Content-Length") or 0)
         try:
             d = json.loads(self.rfile.read(n) or b"{}")
         except json.JSONDecodeError:
-            return self._send(400, json.dumps({"error": "bad json"}))
+            return self._j({"error": "bad json"}, 400)
         path = urllib.parse.urlparse(self.path).path
-        if path == "/api/run":
-            cmd, arg = d.get("cmd", ""), str(d.get("arg", "")).strip()
-            if cmd not in ALLOWED:
-                return self._send(400, json.dumps({"error": "command not allowed"}))
-            if ALLOWED[cmd] and not arg:
-                return self._send(400, json.dumps({"error": "needs a job id"}))
-            args = [sys.executable, RUN_PY, cmd] + (arg.split() if cmd == "mark" else ([arg] if arg else []))
-            key = f"{cmd} {arg[:30]}".strip()
-            with _lock:
-                p = JOBS.get(key)
-                if p and p.poll() is None:
-                    return self._send(200, json.dumps({"error": "already running"}))
-                logf = open(os.path.join(LOGS, "gui_runs.log"), "a", encoding="utf-8")
-                JOBS[key] = subprocess.Popen(args, stdout=logf, stderr=subprocess.STDOUT, cwd=ROOT)
-            return self._send(200, json.dumps({"started": key}))
-        if path == "/api/open":
-            p = os.path.abspath(str(d.get("path", "")))
-            if not p.startswith(os.path.abspath(OUT)) or not os.path.exists(p):
-                return self._send(400, json.dumps({"error": "path not allowed"}))
-            os.startfile(p)  # Windows: open folder/file in Explorer
-            return self._send(200, json.dumps({"ok": True}))
+        try:
+            if path == "/api/run":
+                cmd, arg = d.get("cmd", ""), str(d.get("arg", "")).strip()
+                if cmd not in ALLOWED:
+                    return self._j({"error": "command not allowed"}, 400)
+                if ALLOWED[cmd] and not arg:
+                    return self._j({"error": "needs an argument"}, 400)
+                return self._j(spawn(cmd, arg))
+            if path == "/api/open":
+                p = os.path.abspath(str(d.get("path", "")))
+                if not p.startswith(os.path.abspath(OUT)) or not os.path.exists(p):
+                    return self._j({"error": "path not allowed"}, 400)
+                os.startfile(p)
+                return self._j({"ok": True})
+            if path == "/api/settings":
+                patch = {k: v for k, v in (d.get("patch") or {}).items() if k in SETTING_KEYS}
+                common.save_override("settings.json", patch)
+                common.reload_config()
+                return self._j({"ok": True})
+            if path == "/api/provider-test":
+                import llm
+                return self._j(llm.test(d.get("name", "")))
+            if path == "/api/schedule":
+                if d.get("minutes"):
+                    return self._j(spawn("set-interval", str(int(d["minutes"]))) if False else {"out": subprocess.run([sys.executable, RUN_PY, "set-interval", str(int(d["minutes"]))], capture_output=True, text=True).stdout})
+                return self._j(spawn("enable-schedule" if d.get("enabled") else "disable-schedule"))
+            if path == "/api/inbox":
+                import inbox
+                i = inbox.add(str(d.get("text", ""))[:20000], str(d.get("context", ""))[:2000])
+                spawn("inbox")
+                return self._j({"id": i})
+            if path == "/api/chat":
+                text = str(d.get("text", "")).strip()[:4000]
+                if text and not CHAT_BUSY["on"]:
+                    threading.Thread(target=chat_thread, args=(text,), daemon=True).start()
+                return self._j({"ok": True})
+            if path == "/api/voice":
+                import humanize
+                if d.get("sample"):
+                    humanize.add_voice_sample(d["sample"])
+                if d.get("draft") and d.get("final"):
+                    humanize.add_edit(d["draft"], d["final"])
+                return self._j({"ok": True})
+            if path == "/api/memory":
+                import memory
+                if d.get("note"):
+                    memory.add_memory(str(d["note"])[:500])
+                return self._j({"ok": True})
+            if path == "/api/setup":
+                import setup
+                setup.create_profile(d)
+                return self._j({"ok": True})
+        except Exception as e:
+            return self._j({"error": str(e)[:300]}, 500)
         self._send(404, "{}")
 
 
 def serve(open_browser=True):
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), H)
-    url = f"http://127.0.0.1:{PORT}"
-    print("JobAgent GUI at", url, "(Ctrl+C to stop)")
+    port = common.SETTINGS.get("gui_port", 8777)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
+    url = f"http://127.0.0.1:{port}"
+    print("JobAgent GUI at", url, "| workspace:", HOME, "(Ctrl+C to stop)")
     if open_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:

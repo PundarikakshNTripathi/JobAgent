@@ -1,0 +1,47 @@
+{
+  "name": "Your Name",
+  "first_name": "Your",
+  "last_name": "Name",
+  "email": "you@example.com",
+  "phone": "",
+  "location": "City, Country",
+  "linkedin": "",
+  "github": "",
+  "website": "",
+  "education": "Degree, University, expected graduation",
+  "graduation": "YYYY-MM",
+  "summary": "Two or three sentences: who you are, what you build, what you want next.",
+  "experience": ["Role, Company, dates: one line with your strongest measurable result."],
+  "projects": ["Project name: what it is, one concrete measured result, link if public."],
+  "achievements": [],
+  "skills_defensible": "Only skills you can defend in an interview.",
+  "resume_variants": {"General": "C:/path/to/your/resume.pdf"},
+  "resume_variant_guidance": {"General": "default resume for any role"},
+  "resume_sources": [],
+  "transcript_pdf": "",
+  "hard_rules": [
+    "Never claim experience, skills, numbers or results that are not stated in this profile.",
+    "Tone: direct, specific, humble, no hype."
+  ],
+  "form_defaults": {
+    "country": "", "city": "", "state": "",
+    "work_authorization": "",
+    "requires_visa_sponsorship_outside_home_country": "",
+    "notice_period": "", "earliest_start": "", "salary_expectation": "",
+    "gender_eeo_veteran_disability": "Decline to self-identify",
+    "how_did_you_hear": "Company careers page",
+    "NOTE": "Anything left empty is treated as NEEDS_USER: the filler leaves it blank and lists it instead of guessing."
+  },
+  "preferences": {
+    "home_country": "",
+    "ok_with_relocation": true,
+    "intern_ok": true,
+    "fulltime_ok": true,
+    "track_priority": ["track 1", "track 2"],
+    "availability": "",
+    "pay_policy": "",
+    "daily_improvement_hours": 2,
+    "high_stakes_policy": "Prestigious fellowships, residencies, pre-docs and frontier-lab roles are tracked and prepared but never auto-applied.",
+    "research_interests": []
+  }
+}

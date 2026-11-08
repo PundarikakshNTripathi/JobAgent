@@ -3,7 +3,7 @@ import html, json, os
 from common import db, OUT, now, today, meta_get
 
 MANUAL = [
-    ("Google Careers (India, student/intern/new grad)", "https://www.google.com/about/careers/applications/jobs/results/?q=machine%20learning&location=India&target_level=INTERN_AND_APPRENTICE"),
+    ("Google Careers (student/intern/new grad)", "https://www.google.com/about/careers/applications/jobs/results/?q=machine%20learning&target_level=INTERN_AND_APPRENTICE"),
     ("Google DeepMind student researcher", "https://deepmind.google/about/careers/"),
     ("Mistral AI careers", "https://mistral.ai/careers"),
     ("Meta Careers (internships)", "https://www.metacareers.com/jobs?roles[0]=Internship%20-%20Engineering%20and%20Research"),

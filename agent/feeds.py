@@ -119,9 +119,11 @@ def workday(w):
 
 def amazon():
     out, seen = [], set()
-    combos = [("IND", q) for q in ["machine learning intern", "applied scientist intern", "software development engineer intern", "software development engineer university graduate",
-                                    "applied scientist", "research scientist", "deep learning", "inference", "data scientist"]]
-    combos += [(c, q) for c in ("SGP", "GBR", "DEU", "CAN", "USA") for q in ["machine learning intern", "applied scientist intern", "software development engineer intern", "research scientist intern"]]
+    import common as _c
+    homeq = ["machine learning intern", "applied scientist intern", "software development engineer intern", "software development engineer university graduate",
+                                    "applied scientist", "research scientist", "deep learning", "inference", "data scientist"]
+    cs = _c.SETTINGS.get("amazon_countries") or ["USA"]
+    combos = [(cs[0], q) for q in homeq] + [(c, q) for c in cs[1:] for q in ["machine learning intern", "applied scientist intern", "software development engineer intern", "research scientist intern"]]
     for cc, q in combos:
         try:
             d = http_json(f"https://www.amazon.jobs/en/search.json?result_limit=25&country%5B%5D={cc}&base_query=" + q.replace(" ", "+"), timeout=40)

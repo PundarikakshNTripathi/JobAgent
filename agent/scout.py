@@ -5,14 +5,15 @@
 Runs every `scout_every_days` days (token economy). Programs go to the high-stakes watchlist: tracked and reminded, never auto-applied."""
 import hashlib, os, datetime as dt
 from common import db, log, now, run_claude, extract_json, SETTINGS, OUT, budget_add, meta_get, meta_set, COMPANIES
-import scoring, stakes
+import scoring, stakes, memory
 
-SCOUT_PROMPT = """Job scout for an India-based final-year undergrad (graduates Aug 2027; one ML internship; CUDA/C++ kernels, low-bit inference, agent security, causal inference; runs a small open research lab, Quiet Intelligence). Available from late Dec 2026 / Jan 2027, any work mode, relocation OK with visa sponsorship, Indian citizen.
-Priority: ML systems/inference > AI/ML engineer, applied scientist, data science > software engineering > AI/ML research > AI safety. Interns, new-grad, pre-docs, residencies, fellowships all welcome. Lenient on years of experience.
+SCOUT_PROMPT = """Job scout for the candidate below.
+{persona}
+Interns, new-grad, pre-docs, residencies, fellowships all welcome.
 Today is {today}. Use WebSearch/WebFetch, at most ~20 calls total. Report only things you actually saw with a working URL and a current or upcoming window.
 
 A. ROLES: X/Twitter hiring posts/threads (site:x.com "we're hiring" research engineer / inference / kernel / ML systems intern or new grad 2027); careers pages that block scrapers: Google/DeepMind/Google Research India, Microsoft Research India, Meta, Apple ML, Mistral, IBM Research India, Adobe/Samsung/Qualcomm research India.
-B. PROGRAMS (pre-doctoral, research residency, fellowship, research internship): Google DeepMind pre-doc and student researcher; Meta FAIR pre-doc/residency; Microsoft Research (fellow, AI residency, MSR India research fellow); Apple/NVIDIA research residencies; OpenAI residency; neolab residencies/fellowships; Anthropic Fellows; Cohere Labs scholars; AI2 predoc; academic institutes and research orgs (IISc, IIT/AI4Bharat, TIFR, ELLIS, Max Planck, ETH/EPFL, Mila, Vector, Kempner); AI-safety programs (MATS, SPAR, ERA, LASR, Astra, Pivotal, Constellation, UK AISI). For each: next opening/deadline, whether an Indian undergrad graduating 2027 is eligible, whether remote/visa-supported.
+B. PROGRAMS (pre-doctoral, research residency, fellowship, research internship): Google DeepMind pre-doc and student researcher; Meta FAIR pre-doc/residency; Microsoft Research (fellow, AI residency, MSR India research fellow); Apple/NVIDIA research residencies; OpenAI residency; neolab residencies/fellowships; Anthropic Fellows; Cohere Labs scholars; AI2 predoc; academic institutes and research orgs relevant to the candidate's region and field; AI-safety programs (MATS, SPAR, ERA, LASR, Astra, Pivotal, Constellation, UK AISI). For each: next opening/deadline, whether an Indian undergrad graduating 2027 is eligible, whether remote/visa-supported.
 C. NEW COMPANIES: up to 6 recently funded AI-infra/inference/ML-systems/safety startups not already tracked: {tracked}.
 
 Return ONLY JSON:
@@ -34,8 +35,8 @@ def run_scout(force=False):
     c = db()
     if not force and not due():
         return 0, []
-    prompt = SCOUT_PROMPT.format(today=now()[:10], tracked=", ".join(x["name"] for x in COMPANIES[:60]))
-    text, _ = run_claude(prompt, kind="scout", allowed_tools="WebSearch,WebFetch", model=SETTINGS["claude_model_packets"], timeout=900, max_turns=30)
+    prompt = SCOUT_PROMPT.format(persona=memory.persona(), today=now()[:10], tracked=", ".join(x["name"] for x in COMPANIES[:60]))
+    text, _ = run_claude(prompt, kind="scout", allowed_tools="WebSearch,WebFetch", timeout=900, max_turns=30)
     open(os.path.join(OUT, "scout_last_raw.txt"), "w", encoding="utf-8").write(text)  # never lose a paid result to a downstream bug
     d = extract_json(text)
     ts, n_new = now(), 0

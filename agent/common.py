@@ -1,26 +1,103 @@
-"""Shared helpers: paths, config, SQLite store, logging, notifications, Claude CLI wrapper.
+"""Shared helpers: workspace paths, layered config, SQLite store, logging, notifications.
+Core code never contains personal data: everything personal lives in the user's WORKSPACE (see below) and stays local.
 Stdlib only on purpose (no pip needed)."""
 import json, os, re, sqlite3, subprocess, datetime as dt, urllib.request, shutil
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-CFG = os.path.join(ROOT, "config")
-DATA = os.path.join(ROOT, "data")
-OUT = os.path.join(ROOT, "out")
+# ------------------------------------------------------------------ paths
+CORE = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))     # the repository (public code)
+ROOT = CORE                                                               # backward-compatible alias
+DEFAULTS = os.path.join(CORE, "defaults")                                  # shipped defaults, templates, skills
+
+
+def _find_home():
+    """Workspace = where all personal data lives. Order: $JOBAGENT_HOME, <repo>/.jobagent_home (a one-line pointer file, gitignored), ~/JobAgent."""
+    env = os.environ.get("JOBAGENT_HOME")
+    if env:
+        return os.path.abspath(os.path.expanduser(env))
+    ptr = os.path.join(CORE, ".jobagent_home")
+    if os.path.exists(ptr):
+        p = open(ptr, encoding="utf-8").read().strip()
+        if p:
+            return os.path.abspath(os.path.expanduser(p))
+    return os.path.join(os.path.expanduser("~"), "JobAgent")
+
+
+HOME = _find_home()
+CFG = os.path.join(HOME, "config")
+DATA = os.path.join(HOME, "data")
+OUT = os.path.join(HOME, "out")
 APPS = os.path.join(OUT, "applications")
-LOGS = os.path.join(ROOT, "logs")
-for d in (DATA, OUT, APPS, LOGS):
+LOGS = os.path.join(HOME, "logs")
+USER_SKILLS = os.path.join(HOME, "skills")
+for d in (CFG, DATA, OUT, APPS, LOGS, USER_SKILLS, os.path.join(DATA, "memory")):
     os.makedirs(d, exist_ok=True)
 
 
-def load(name):
-    with open(os.path.join(CFG, name), encoding="utf-8") as f:
+# ------------------------------------------------------------------ layered config (defaults + workspace overrides)
+def _deep_merge(a, b):
+    if isinstance(a, dict) and isinstance(b, dict):
+        out = dict(a)
+        for k, v in b.items():
+            out[k] = _deep_merge(a[k], v) if k in a else v
+        return out
+    return b
+
+
+def _read(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-SETTINGS = load("settings.json")
-PROFILE = load("profile.json")
-FILTERS = load("filters.json")
-COMPANIES = load("companies.json")
+def load(name, personal_only=False):
+    """defaults/<name> deep-merged with <workspace>/config/<name>. Lists (companies) merge by slug/name, workspace wins."""
+    base = None if personal_only else _read(os.path.join(DEFAULTS, name))
+    over = _read(os.path.join(CFG, name))
+    if base is None:
+        return over if over is not None else {}
+    if over is None:
+        return base
+    if isinstance(base, list) and isinstance(over, list):
+        key = lambda e: (e.get("slug") or e.get("name") or "").lower()
+        merged = {key(e): e for e in base}
+        for e in over:
+            merged[key(e)] = {**merged.get(key(e), {}), **e}
+        return list(merged.values())
+    return _deep_merge(base, over)
+
+
+def save_override(name, patch):
+    """Write only the user's changes to <workspace>/config/<name> (never touches shipped defaults)."""
+    cur = _read(os.path.join(CFG, name)) or {}
+    new = _deep_merge(cur, patch) if isinstance(cur, dict) else patch
+    with open(os.path.join(CFG, name), "w", encoding="utf-8") as f:
+        json.dump(new, f, indent=2)
+    return new
+
+
+def reload_config():
+    """(Re)load config IN PLACE so modules that imported the dicts see the change."""
+    global SETTINGS, PROFILE, FILTERS, COMPANIES, PROVIDERS
+    fresh = {"SETTINGS": load("settings.json"), "PROFILE": load("profile.json", personal_only=True), "FILTERS": load("filters.json"),
+             "COMPANIES": load("companies.json"), "PROVIDERS": load("providers.json")}
+    for name, val in fresh.items():
+        cur = globals().get(name)
+        if isinstance(cur, dict) and isinstance(val, dict):
+            cur.clear()
+            cur.update(val)
+        elif isinstance(cur, list) and isinstance(val, list):
+            cur[:] = val
+        else:
+            globals()[name] = val
+
+
+SETTINGS = PROFILE = FILTERS = COMPANIES = PROVIDERS = None
+reload_config()
+
+
+def needs_setup():
+    return not PROFILE or not PROFILE.get("name")
 
 
 def today():
@@ -33,7 +110,10 @@ def now():
 
 def log(msg):
     line = f"[{now()}] {msg}"
-    print(line, flush=True)
+    try:
+        print(line, flush=True)
+    except (UnicodeEncodeError, OSError):
+        pass
     try:
         with open(os.path.join(LOGS, "agent.log"), "a", encoding="utf-8") as f:
             f.write(line + "\n")
@@ -41,7 +121,7 @@ def log(msg):
         pass
 
 
-# ---------------------------------------------------------------- http
+# ------------------------------------------------------------------ http
 def http_get(url, timeout=25, headers=None):
     h = {"User-Agent": "Mozilla/5.0 (JobAgent personal use)", "Accept": "application/json, text/plain, */*"}
     h.update(headers or {})
@@ -62,7 +142,7 @@ def http_json(url, timeout=25, data=None, headers=None):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
-# ---------------------------------------------------------------- db
+# ------------------------------------------------------------------ db
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs(
   id TEXT PRIMARY KEY, company TEXT, tier TEXT, category TEXT, title TEXT, location TEXT, url TEXT,
@@ -75,10 +155,14 @@ CREATE TABLE IF NOT EXISTS triage(
 CREATE TABLE IF NOT EXISTS packets(
   job_id TEXT PRIMARY KEY, dir TEXT, at TEXT, referral_at TEXT, filled_at TEXT, fill_report TEXT);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
-CREATE TABLE IF NOT EXISTS llm_log(ts TEXT, kind TEXT, model TEXT, inp INTEGER, cache_create INTEGER, cache_read INTEGER, outp INTEGER, cost REAL);
+CREATE TABLE IF NOT EXISTS budget(day TEXT, kind TEXT, n INTEGER, PRIMARY KEY(day, kind));
+CREATE TABLE IF NOT EXISTS llm_log(ts TEXT, kind TEXT, model TEXT, inp INTEGER, cache_create INTEGER, cache_read INTEGER, outp INTEGER, cost REAL, provider TEXT, secs REAL);
 CREATE TABLE IF NOT EXISTS watch(job_id TEXT PRIMARY KEY, added TEXT, reason TEXT, next_step TEXT, referral_state TEXT DEFAULT 'none', deadline TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS programs(id TEXT PRIMARY KEY, name TEXT, org TEXT, kind TEXT, url TEXT, window TEXT, eligibility TEXT, notes TEXT, added TEXT);
-CREATE TABLE IF NOT EXISTS budget(day TEXT, kind TEXT, n INTEGER, PRIMARY KEY(day, kind));
+CREATE TABLE IF NOT EXISTS inbox(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, text TEXT, context TEXT, status TEXT DEFAULT 'new', result TEXT);
+CREATE TABLE IF NOT EXISTS chat(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, role TEXT, text TEXT);
+CREATE TABLE IF NOT EXISTS referrals(job_id TEXT PRIMARY KEY, dir TEXT, at TEXT, how TEXT, state TEXT DEFAULT 'planned');
+CREATE TABLE IF NOT EXISTS outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, job_id TEXT, event TEXT, note TEXT);
 """
 
 
@@ -88,6 +172,11 @@ def db():
     c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA busy_timeout=90000")
     c.executescript(SCHEMA)
+    for col, typ in (("provider", "TEXT"), ("secs", "REAL")):  # forward-compatible migration of older workspaces
+        try:
+            c.execute(f"ALTER TABLE llm_log ADD COLUMN {col} {typ}")
+        except sqlite3.OperationalError:
+            pass
     return c
 
 
@@ -97,8 +186,7 @@ def budget_used(c, kind):
 
 
 def budget_add(c, kind, n=1):
-    c.execute("INSERT INTO budget(day,kind,n) VALUES(?,?,?) ON CONFLICT(day,kind) DO UPDATE SET n=n+?",
-              (today(), kind, n, n))
+    c.execute("INSERT INTO budget(day,kind,n) VALUES(?,?,?) ON CONFLICT(day,kind) DO UPDATE SET n=n+?", (today(), kind, n, n))
     c.commit()
 
 
@@ -112,7 +200,14 @@ def meta_set(c, k, v):
     c.commit()
 
 
-# ---------------------------------------------------------------- notify
+def record_outcome(job_id, event, note=""):
+    """Feedback loop: applied / skipped (with reason) / replied ... feeds memory and learning."""
+    c = db()
+    c.execute("INSERT INTO outcomes(ts,job_id,event,note) VALUES(?,?,?,?)", (now(), job_id, event, note))
+    c.commit()
+
+
+# ------------------------------------------------------------------ notify
 def _ps_toast(title, body):
     esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "''")
     ps = (
@@ -123,12 +218,11 @@ def _ps_toast(title, body):
         "$t = New-Object Windows.UI.Notifications.ToastNotification $x;"
         "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($t)"
     )
-    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-                   capture_output=True, timeout=30)
+    subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True, timeout=30)
 
 
 def notify(title, body):
-    """Desktop toast, optional phone push (ntfy). Always appended to out/notifications.log."""
+    """Desktop toast (Windows) and optional phone push (ntfy). Always appended to out/notifications.log."""
     body = body[:400]
     try:
         with open(os.path.join(OUT, "notifications.log"), "a", encoding="utf-8") as f:
@@ -136,71 +230,29 @@ def notify(title, body):
     except OSError:
         pass
     n = SETTINGS.get("notify", {})
-    if n.get("windows_toast"):
+    if n.get("windows_toast") and os.name == "nt":
         try:
             _ps_toast(title, body)
-        except Exception as e:  # never let a notification kill a run
+        except Exception as e:
             log(f"toast failed: {e}")
     if n.get("ntfy_topic"):
         try:
-            rq = urllib.request.Request(f"{n.get('ntfy_server','https://ntfy.sh')}/{n['ntfy_topic']}",
-                                        data=body.encode("utf-8"), headers={"Title": title.encode("ascii", "ignore").decode()})
+            rq = urllib.request.Request(f"{n.get('ntfy_server', 'https://ntfy.sh')}/{n['ntfy_topic']}", data=body.encode("utf-8"),
+                                        headers={"Title": title.encode("ascii", "ignore").decode()})
             urllib.request.urlopen(rq, timeout=15).read()
         except Exception as e:
             log(f"ntfy failed: {e}")
 
 
-# ---------------------------------------------------------------- claude
+# ------------------------------------------------------------------ LLM entry point (provider-agnostic; see llm.py)
 def claude_bin():
     return shutil.which("claude") or shutil.which("claude.cmd") or "claude"
 
 
-LEAN_SYSTEM = "You are a precise assistant inside an automation pipeline. Follow the task exactly. When asked for JSON, output only the JSON."
-_EMPTY_MCP = os.path.join(DATA, "mcp-empty.json")
-
-
-def run_claude(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra_args=None, cwd=None, max_turns=None,
-               mcp_config=None, persist=False):
-    """Run `claude -p` headless on the user's subscription in LEAN mode: no user MCP servers, no skills, no default
-    Claude Code system prompt, only the built-in tools actually needed (cuts ~27k input tokens/call to <1k).
-    mcp_config: path of an MCP config to load (browser steps). persist=True keeps the session transcript for auditing.
-    Logs token usage to the llm_log table. Returns (text, raw_json_or_None)."""
-    if not os.path.exists(_EMPTY_MCP):
-        json.dump({"mcpServers": {}}, open(_EMPTY_MCP, "w"))
-    builtin = ",".join(x for x in allowed_tools.split(",") if x and not x.startswith("mcp__"))
-    args = [claude_bin(), "-p", "--output-format", "json", "--strict-mcp-config", "--mcp-config", mcp_config or _EMPTY_MCP,
-            "--disable-slash-commands", "--setting-sources", "user", "--system-prompt", LEAN_SYSTEM, "--tools", builtin]
-    if not persist:
-        args.append("--no-session-persistence")
-    if model:
-        args += ["--model", model]
-    if allowed_tools:
-        args += ["--allowedTools", allowed_tools]
-    if max_turns:
-        args += ["--max-turns", str(max_turns)]
-    args += extra_args or []
-    try:
-        p = subprocess.run(args, input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=timeout, cwd=cwd or ROOT)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"claude timed out after {timeout}s")
-    if p.returncode != 0 and not p.stdout.strip():
-        raise RuntimeError(f"claude failed ({p.returncode}): {p.stderr[:500]}")
-    try:
-        j = json.loads(p.stdout)
-    except json.JSONDecodeError:
-        return p.stdout, None
-    try:
-        u = j.get("usage", {})
-        c = db()
-        c.execute("INSERT INTO llm_log(ts,kind,model,inp,cache_create,cache_read,outp,cost) VALUES(?,?,?,?,?,?,?,?)",
-                  (now(), kind, model or "default", u.get("input_tokens", 0), u.get("cache_creation_input_tokens", 0),
-                   u.get("cache_read_input_tokens", 0), u.get("output_tokens", 0), j.get("total_cost_usd", 0)))
-        c.commit()
-    except Exception:
-        pass
-    if j.get("is_error"):
-        raise RuntimeError(f"claude error: {str(j.get('result'))[:500]}")
-    return j.get("result", ""), j
+def run_claude(prompt, **kw):
+    """Backward-compatible name. All LLM calls go through llm.run(): routing, provider adapters, budgets, usage log."""
+    import llm
+    return llm.run(prompt, **kw)
 
 
 def extract_json(text):

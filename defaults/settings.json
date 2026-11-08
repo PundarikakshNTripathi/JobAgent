@@ -1,0 +1,203 @@
+{
+  "poll_every_minutes": 60,
+  "min_heuristic_score_for_llm": 58,
+  "instant_alert_score": 78,
+  "max_triage_calls_per_day": 10,
+  "triage_batch_size": 12,
+  "max_triage_per_cycle": 36,
+  "triage_desc_chars": 1000,
+  "max_packets_per_day": 8,
+  "packet_min_fit": 50,
+  "max_referrals_per_day": 12,
+  "max_linkedin_per_day": 3,
+  "linkedin_browse": false,
+  "max_fills_per_day": 4,
+  "auto_fill": false,
+  "fill_window_local_hours": [
+    7,
+    23
+  ],
+  "scout_every_days": 2,
+  "guard_minutes": 9,
+  "chrome_debug_port": 9333,
+  "chrome_profile_dir": "",
+  "gui_port": 8777,
+  "recent_days_github_lists": 30,
+  "include_new_grad_list": true,
+  "tectonic": "",
+  "notify": {
+    "windows_toast": true,
+    "ntfy_topic": "",
+    "ntfy_server": "https://ntfy.sh"
+  },
+  "linkedin_connections_csv": "data/Connections.csv",
+  "web": {
+    "search_backend": "ddg",
+    "brave_api_key_env": "BRAVE_API_KEY",
+    "max_pages": 6,
+    "page_chars": 3500
+  },
+  "humanize": {
+    "enabled": true,
+    "max_rewrites": 1
+  },
+  "memory": {
+    "enabled": true
+  },
+  "agent_mode": {
+    "max_steps": 12
+  },
+  "llm": {
+    "routing": {
+      "default": {
+        "provider": "auto",
+        "model": "",
+        "effort": "medium"
+      },
+      "triage": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
+      },
+      "today": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
+      },
+      "ingest": {
+        "provider": "auto",
+        "model": "",
+        "effort": "medium"
+      },
+      "chat": {
+        "provider": "auto",
+        "model": "",
+        "effort": "medium"
+      },
+      "reflect": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
+      },
+      "packet": {
+        "provider": "auto",
+        "model": "",
+        "effort": "high"
+      },
+      "outreach": {
+        "provider": "auto",
+        "model": "",
+        "effort": "high"
+      },
+      "referral": {
+        "provider": "auto",
+        "model": "",
+        "effort": "high"
+      },
+      "resume": {
+        "provider": "auto",
+        "model": "",
+        "effort": "high"
+      },
+      "scout": {
+        "provider": "auto",
+        "model": "",
+        "effort": "medium"
+      },
+      "fill": {
+        "provider": "claude",
+        "model": "",
+        "effort": "medium"
+      },
+      "linkedin": {
+        "provider": "claude",
+        "model": "",
+        "effort": "medium"
+      },
+      "yc": {
+        "provider": "claude",
+        "model": "",
+        "effort": "medium"
+      }
+    },
+    "fallbacks": [
+      "claude",
+      "agy",
+      "codex",
+      "gemini"
+    ],
+    "budgets": {}
+  },
+  "high_stakes": {
+    "categories": [
+      "frontier",
+      "safety"
+    ],
+    "title_regex": [
+      "fellow",
+      "residen",
+      "pre-?doc",
+      "predoctoral",
+      "pre-doctoral",
+      "student researcher",
+      "\\bai safety\\b.*(intern|fellow|resid)",
+      "alignment.*(intern|fellow|resid)",
+      "interpretab.*(intern|fellow|resid)"
+    ],
+    "extra_companies": []
+  },
+  "triage_timeout_s": 300,
+  "packet_timeout_s": 600,
+  "fill_timeout_s": 420,
+  "amazon_countries": [
+    "USA",
+    "GBR",
+    "CAN",
+    "DEU",
+    "SGP",
+    "IND"
+  ],
+  "google_locations": [
+    [
+      "United States",
+      [
+        "machine learning",
+        "software engineer"
+      ]
+    ],
+    [
+      "United Kingdom",
+      [
+        "machine learning"
+      ]
+    ],
+    [
+      "Canada",
+      [
+        "machine learning"
+      ]
+    ],
+    [
+      "Germany",
+      [
+        "machine learning"
+      ]
+    ],
+    [
+      "Singapore",
+      [
+        "machine learning"
+      ]
+    ],
+    [
+      "India",
+      [
+        "machine learning",
+        "software engineer"
+      ]
+    ]
+  ],
+  "cycle_minutes_budget": 25,
+  "packets_per_cycle": 4,
+  "referrals_per_cycle": 6
+}

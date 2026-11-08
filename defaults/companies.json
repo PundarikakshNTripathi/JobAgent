@@ -1,0 +1,1194 @@
+[
+ {
+  "name": "Anthropic",
+  "tier": "S",
+  "category": "frontier",
+  "ats": "greenhouse",
+  "slug": "anthropic",
+  "note": "Frontier lab; safety/interp/inference."
+ },
+ {
+  "name": "OpenAI",
+  "tier": "S",
+  "category": "frontier",
+  "ats": "ashby",
+  "slug": "openai",
+  "note": "Frontier lab; Emerging Talent programs."
+ },
+ {
+  "name": "xAI",
+  "tier": "S",
+  "category": "frontier",
+  "ats": "greenhouse",
+  "slug": "xai",
+  "note": "Frontier lab; hires fast."
+ },
+ {
+  "name": "Thinking Machines Lab",
+  "tier": "S",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "thinkingmachines",
+  "note": "Neolab; infra and training systems."
+ },
+ {
+  "name": "Reflection AI",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "reflectionai",
+  "note": "Neolab."
+ },
+ {
+  "name": "Periodic Labs",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "periodic-labs",
+  "note": "Neolab; AI for science."
+ },
+ {
+  "name": "Prime Intellect",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "primeintellect",
+  "note": "Decentralized training / RL infra; hires on open-source work."
+ },
+ {
+  "name": "Physical Intelligence",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "physicalintelligence",
+  "note": "Robotics foundation models."
+ },
+ {
+  "name": "Liquid AI",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "liquid-ai",
+  "note": "Efficient architectures; edge inference."
+ },
+ {
+  "name": "Cartesia",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "cartesia",
+  "note": "SSM models and voice; efficient inference."
+ },
+ {
+  "name": "Zyphra",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "zyphra",
+  "note": "Small/efficient models."
+ },
+ {
+  "name": "Nous Research",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "nousresearch",
+  "note": "Open-weights lab."
+ },
+ {
+  "name": "World Labs",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "worldlabs",
+  "note": "3D / world models."
+ },
+ {
+  "name": "Sesame",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "sesame",
+  "note": "Voice models."
+ },
+ {
+  "name": "Reka",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "reka",
+  "note": "Multimodal models."
+ },
+ {
+  "name": "Poolside",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "poolside",
+  "note": "Code models."
+ },
+ {
+  "name": "Magic",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "magic",
+  "note": "Code models."
+ },
+ {
+  "name": "Essential AI",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "greenhouse",
+  "slug": "essential",
+  "note": "Open models."
+ },
+ {
+  "name": "Datology AI",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "datologyai",
+  "note": "Data curation research."
+ },
+ {
+  "name": "Isomorphic Labs",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "greenhouse",
+  "slug": "isomorphiclabs",
+  "note": "AI drug discovery."
+ },
+ {
+  "name": "Cohere",
+  "tier": "A",
+  "category": "frontier",
+  "ats": "ashby",
+  "slug": "cohere",
+  "note": "Enterprise LLMs; Cohere Labs research."
+ },
+ {
+  "name": "Black Forest Labs",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "black-forest-labs",
+  "note": "Image models."
+ },
+ {
+  "name": "Character.AI",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "character",
+  "note": "Consumer LLM; inference-heavy."
+ },
+ {
+  "name": "Perplexity",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "perplexity",
+  "note": "Answer engine; you were a Campus Partner."
+ },
+ {
+  "name": "Cursor (Anysphere)",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "cursor",
+  "note": "Coding agent."
+ },
+ {
+  "name": "Cognition",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "cognition",
+  "note": "Coding agents."
+ },
+ {
+  "name": "ElevenLabs",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "elevenlabs",
+  "note": "Voice AI."
+ },
+ {
+  "name": "Runway",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "runway",
+  "note": "Video models."
+ },
+ {
+  "name": "Mistral AI",
+  "tier": "S",
+  "category": "frontier",
+  "ats": "",
+  "slug": "",
+  "note": "MANUAL: mistral.ai/careers (applied scientist interns, Paris/London)."
+ },
+ {
+  "name": "Google DeepMind",
+  "tier": "S",
+  "category": "frontier",
+  "ats": "",
+  "slug": "",
+  "note": "MANUAL: deepmind.google student researcher program / Google Careers."
+ },
+ {
+  "name": "Goodfire",
+  "tier": "S",
+  "category": "safety",
+  "ats": "greenhouse",
+  "slug": "goodfire",
+  "note": "Interpretability startup."
+ },
+ {
+  "name": "Apollo Research",
+  "tier": "S",
+  "category": "safety",
+  "ats": "lever",
+  "slug": "apolloresearch",
+  "note": "Evals / scheming."
+ },
+ {
+  "name": "METR",
+  "tier": "S",
+  "category": "safety",
+  "ats": "lever",
+  "slug": "metr",
+  "note": "Dangerous-capability evals."
+ },
+ {
+  "name": "Redwood Research",
+  "tier": "A",
+  "category": "safety",
+  "ats": "ashby",
+  "slug": "redwoodresearch",
+  "note": "AI control."
+ },
+ {
+  "name": "Center for AI Safety",
+  "tier": "A",
+  "category": "safety",
+  "ats": "greenhouse",
+  "slug": "cais",
+  "note": "Research engineer interns."
+ },
+ {
+  "name": "FAR.AI",
+  "tier": "A",
+  "category": "safety",
+  "ats": "lever",
+  "slug": "far-ai",
+  "note": "Safety research."
+ },
+ {
+  "name": "Transluce",
+  "tier": "A",
+  "category": "safety",
+  "ats": "",
+  "slug": "",
+  "note": "MANUAL: transluce.org (interpretability)."
+ },
+ {
+  "name": "Baseten",
+  "tier": "S",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "baseten",
+  "note": "Inference platform."
+ },
+ {
+  "name": "Fireworks AI",
+  "tier": "S",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "fireworks",
+  "note": "Inference platform."
+ },
+ {
+  "name": "Together AI",
+  "tier": "S",
+  "category": "inference",
+  "ats": "greenhouse",
+  "slug": "togetherai",
+  "note": "Inference + kernels."
+ },
+ {
+  "name": "Modal",
+  "tier": "A",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "modal",
+  "note": "Serverless GPU."
+ },
+ {
+  "name": "Inferact (vLLM)",
+  "tier": "S",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "inferact",
+  "note": "vLLM company."
+ },
+ {
+  "name": "RadixArk (SGLang)",
+  "tier": "S",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "radixark",
+  "note": "SGLang company."
+ },
+ {
+  "name": "Etched",
+  "tier": "S",
+  "category": "inference",
+  "ats": "greenhouse",
+  "slug": "etchedai",
+  "note": "Transformer ASIC."
+ },
+ {
+  "name": "Anyscale",
+  "tier": "A",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "anyscale",
+  "note": "Ray / RL infra."
+ },
+ {
+  "name": "Lambda",
+  "tier": "A",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "lambda",
+  "note": "GPU cloud."
+ },
+ {
+  "name": "CoreWeave",
+  "tier": "A",
+  "category": "inference",
+  "ats": "greenhouse",
+  "slug": "coreweave",
+  "note": "GPU cloud."
+ },
+ {
+  "name": "Nebius",
+  "tier": "B",
+  "category": "inference",
+  "ats": "greenhouse",
+  "slug": "nebius",
+  "note": "GPU cloud."
+ },
+ {
+  "name": "Crusoe",
+  "tier": "B",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "crusoe",
+  "note": "GPU cloud."
+ },
+ {
+  "name": "TensorWave",
+  "tier": "B",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "tensorwave",
+  "note": "AMD GPU cloud."
+ },
+ {
+  "name": "Lightning AI",
+  "tier": "B",
+  "category": "inference",
+  "ats": "greenhouse",
+  "slug": "lightningai",
+  "note": "PyTorch Lightning."
+ },
+ {
+  "name": "OpenRouter",
+  "tier": "B",
+  "category": "inference",
+  "ats": "ashby",
+  "slug": "openrouter",
+  "note": "Inference routing."
+ },
+ {
+  "name": "Scale AI",
+  "tier": "A",
+  "category": "data",
+  "ats": "greenhouse",
+  "slug": "scaleai",
+  "note": "Data / evals / research."
+ },
+ {
+  "name": "Mercor",
+  "tier": "B",
+  "category": "data",
+  "ats": "ashby",
+  "slug": "mercor",
+  "note": "Data."
+ },
+ {
+  "name": "Snorkel AI",
+  "tier": "B",
+  "category": "data",
+  "ats": "greenhouse",
+  "slug": "snorkelai",
+  "note": "Data."
+ },
+ {
+  "name": "MatX",
+  "tier": "A",
+  "category": "hardware",
+  "ats": "ashby",
+  "slug": "matx",
+  "note": "LLM chip startup; kernels/compilers."
+ },
+ {
+  "name": "Cerebras",
+  "tier": "S",
+  "category": "hardware",
+  "ats": "ashby",
+  "slug": "cerebras",
+  "note": "Wafer-scale; Bengaluru MLIR roles."
+ },
+ {
+  "name": "Tenstorrent",
+  "tier": "A",
+  "category": "hardware",
+  "ats": "greenhouse",
+  "slug": "tenstorrent",
+  "note": "Open hardware; compilers/kernels."
+ },
+ {
+  "name": "d-Matrix",
+  "tier": "A",
+  "category": "hardware",
+  "ats": "ashby",
+  "slug": "d-matrix",
+  "note": "Inference accelerator."
+ },
+ {
+  "name": "SambaNova",
+  "tier": "B",
+  "category": "hardware",
+  "ats": "greenhouse",
+  "slug": "sambanovasystems",
+  "note": "Accelerators."
+ },
+ {
+  "name": "Lightmatter",
+  "tier": "B",
+  "category": "hardware",
+  "ats": "greenhouse",
+  "slug": "lightmatter",
+  "note": "Photonics."
+ },
+ {
+  "name": "Normal Computing",
+  "tier": "B",
+  "category": "hardware",
+  "ats": "ashby",
+  "slug": "normalcomputing",
+  "note": "Thermodynamic computing."
+ },
+ {
+  "name": "Extropic",
+  "tier": "B",
+  "category": "hardware",
+  "ats": "ashby",
+  "slug": "extropic",
+  "note": "Thermodynamic computing."
+ },
+ {
+  "name": "Rain AI",
+  "tier": "B",
+  "category": "hardware",
+  "ats": "ashby",
+  "slug": "rain",
+  "note": "Neuromorphic."
+ },
+ {
+  "name": "Furiosa AI",
+  "tier": "B",
+  "category": "hardware",
+  "ats": "greenhouse",
+  "slug": "furiosaai",
+  "note": "Accelerators."
+ },
+ {
+  "name": "Graphcore",
+  "tier": "B",
+  "category": "hardware",
+  "ats": "greenhouse",
+  "slug": "graphcore",
+  "note": "SoftBank-owned."
+ },
+ {
+  "name": "Databricks",
+  "tier": "A",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "databricks",
+  "note": "Mosaic research; Bengaluru office."
+ },
+ {
+  "name": "Stripe",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "stripe",
+  "note": "SWE; ML infra."
+ },
+ {
+  "name": "Figma",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "figma",
+  "note": "SWE."
+ },
+ {
+  "name": "Notion",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "notion",
+  "note": "SWE/AI."
+ },
+ {
+  "name": "Harvey",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "harvey",
+  "note": "Legal AI."
+ },
+ {
+  "name": "Sierra",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "sierra",
+  "note": "Agents."
+ },
+ {
+  "name": "Decagon",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "decagon",
+  "note": "Agents."
+ },
+ {
+  "name": "LangChain",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "langchain",
+  "note": "Agents tooling."
+ },
+ {
+  "name": "Replit",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "replit",
+  "note": "SWE/AI."
+ },
+ {
+  "name": "Cloudflare",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "cloudflare",
+  "note": "SWE; Workers AI."
+ },
+ {
+  "name": "ClickHouse",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "clickhouse",
+  "note": "Systems / DB."
+ },
+ {
+  "name": "Snowflake",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "snowflake",
+  "note": "Systems + AI research."
+ },
+ {
+  "name": "Waymo",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "waymo",
+  "note": "ML/Systems."
+ },
+ {
+  "name": "Nuro",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "nuro",
+  "note": "ML/Systems."
+ },
+ {
+  "name": "Figure AI",
+  "tier": "B",
+  "category": "robotics",
+  "ats": "greenhouse",
+  "slug": "figureai",
+  "note": "Robotics."
+ },
+ {
+  "name": "Datadog",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "datadog",
+  "note": "SWE."
+ },
+ {
+  "name": "Vercel",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "vercel",
+  "note": "SWE."
+ },
+ {
+  "name": "Supabase",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "supabase",
+  "note": "SWE."
+ },
+ {
+  "name": "Jane Street",
+  "tier": "A",
+  "category": "quant",
+  "ats": "greenhouse",
+  "slug": "janestreet",
+  "note": "Interns; low odds, high value."
+ },
+ {
+  "name": "IMC Trading",
+  "tier": "B",
+  "category": "quant",
+  "ats": "greenhouse",
+  "slug": "imc",
+  "note": "Interns."
+ },
+ {
+  "name": "Jump Trading",
+  "tier": "B",
+  "category": "quant",
+  "ats": "greenhouse",
+  "slug": "jumptrading",
+  "note": "C++/FPGA."
+ },
+ {
+  "name": "Sarvam AI",
+  "tier": "A",
+  "category": "india",
+  "ats": "ashby",
+  "slug": "sarvam",
+  "note": "Indian foundation models; Bengaluru."
+ },
+ {
+  "name": "Meesho",
+  "tier": "B",
+  "category": "india",
+  "ats": "lever",
+  "slug": "meesho",
+  "note": "Bengaluru; ML."
+ },
+ {
+  "name": "CRED",
+  "tier": "B",
+  "category": "india",
+  "ats": "lever",
+  "slug": "cred",
+  "note": "Bengaluru; SWE/ML."
+ },
+ {
+  "name": "Groww",
+  "tier": "C",
+  "category": "india",
+  "ats": "greenhouse",
+  "slug": "groww",
+  "note": "Bengaluru."
+ },
+ {
+  "name": "Palantir",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "lever",
+  "slug": "palantir",
+  "note": "Forward-deployed + SWE; new-grad programs."
+ },
+ {
+  "name": "Zoox",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "lever",
+  "slug": "zoox",
+  "note": "Autonomy ML/systems."
+ },
+ {
+  "name": "Wayve",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "wayve",
+  "note": "Embodied AI driving; UK."
+ },
+ {
+  "name": "Deepgram",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "deepgram",
+  "note": "Speech AI."
+ },
+ {
+  "name": "AssemblyAI",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "greenhouse",
+  "slug": "assemblyai",
+  "note": "Speech AI."
+ },
+ {
+  "name": "Suno",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "suno",
+  "note": "Music generation."
+ },
+ {
+  "name": "CodeRabbit",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "coderabbit",
+  "note": "AI code review."
+ },
+ {
+  "name": "Factory",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "factory",
+  "note": "Coding agents."
+ },
+ {
+  "name": "Exa",
+  "tier": "A",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "exa",
+  "note": "AI search; research-heavy."
+ },
+ {
+  "name": "Tavus",
+  "tier": "C",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "tavus",
+  "note": "Video AI."
+ },
+ {
+  "name": "Hedra",
+  "tier": "C",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "hedra",
+  "note": "Video AI."
+ },
+ {
+  "name": "Lovable",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "lovable",
+  "note": "AI app builder."
+ },
+ {
+  "name": "Imbue",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "greenhouse",
+  "slug": "imbue",
+  "note": "Reasoning agents."
+ },
+ {
+  "name": "UK AI Security Institute",
+  "tier": "S",
+  "category": "safety",
+  "ats": "greenhouse",
+  "slug": "aisi",
+  "note": "Government AI safety institute."
+ },
+ {
+  "name": "Epoch AI",
+  "tier": "A",
+  "category": "safety",
+  "ats": "lever",
+  "slug": "epoch-ai",
+  "note": "AI forecasting/research org."
+ },
+ {
+  "name": "Elicit",
+  "tier": "B",
+  "category": "safety",
+  "ats": "ashby",
+  "slug": "elicit",
+  "note": "AI research assistant; safety-minded."
+ },
+ {
+  "name": "Roboflow",
+  "tier": "B",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "roboflow",
+  "note": "Vision infra."
+ },
+ {
+  "name": "1X Technologies",
+  "tier": "B",
+  "category": "robotics",
+  "ats": "ashby",
+  "slug": "1x",
+  "note": "Humanoid robots."
+ },
+ {
+  "name": "Airbnb",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "airbnb",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Affirm",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "affirm",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Asana",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "asana",
+  "note": "SWE."
+ },
+ {
+  "name": "Block",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "block",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Braze",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "braze",
+  "note": "SWE."
+ },
+ {
+  "name": "Chime",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "chime",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Coinbase",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "coinbase",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Discord",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "discord",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Dropbox",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "dropbox",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Duolingo",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "duolingo",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Elastic",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "elastic",
+  "note": "Systems/search."
+ },
+ {
+  "name": "GitLab",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "gitlab",
+  "note": "SWE."
+ },
+ {
+  "name": "Gusto",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "gusto",
+  "note": "SWE."
+ },
+ {
+  "name": "Instacart",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "instacart",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Lyft",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "lyft",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "MongoDB",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "mongodb",
+  "note": "Systems/DB."
+ },
+ {
+  "name": "Okta",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "okta",
+  "note": "SWE."
+ },
+ {
+  "name": "Pinterest",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "pinterest",
+  "note": "ML/SWE."
+ },
+ {
+  "name": "Plaid",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "plaid",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Reddit",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "reddit",
+  "note": "ML/SWE."
+ },
+ {
+  "name": "Robinhood",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "robinhood",
+  "note": "SWE."
+ },
+ {
+  "name": "Roblox",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "roblox",
+  "note": "ML/systems."
+ },
+ {
+  "name": "Amplitude",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "amplitude",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Mixpanel",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "mixpanel",
+  "note": "SWE."
+ },
+ {
+  "name": "PagerDuty",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "pagerduty",
+  "note": "SWE."
+ },
+ {
+  "name": "LaunchDarkly",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "launchdarkly",
+  "note": "SWE."
+ },
+ {
+  "name": "Miro",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "miro",
+  "note": "SWE."
+ },
+ {
+  "name": "Render",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "render",
+  "note": "Infra."
+ },
+ {
+  "name": "Railway",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "ashby",
+  "slug": "railway",
+  "note": "Infra."
+ },
+ {
+  "name": "Honeycomb",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "honeycomb",
+  "note": "Observability."
+ },
+ {
+  "name": "Fastly",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "fastly",
+  "note": "Edge systems."
+ },
+ {
+  "name": "New Relic",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "newrelic",
+  "note": "SWE."
+ },
+ {
+  "name": "Canva",
+  "tier": "B",
+  "category": "bigco",
+  "ats": "smartrecruiters",
+  "slug": "canva",
+  "note": "SWE/ML."
+ },
+ {
+  "name": "Freshworks",
+  "tier": "B",
+  "category": "india",
+  "ats": "smartrecruiters",
+  "slug": "freshworks",
+  "note": "Chennai/Bengaluru SWE/ML."
+ },
+ {
+  "name": "Observe.AI",
+  "tier": "B",
+  "category": "india",
+  "ats": "greenhouse",
+  "slug": "observeai",
+  "note": "India-origin voice AI."
+ },
+ {
+  "name": "Descript",
+  "tier": "C",
+  "category": "neolab",
+  "ats": "greenhouse",
+  "slug": "descript",
+  "note": "Media AI."
+ },
+ {
+  "name": "HeyGen",
+  "tier": "C",
+  "category": "neolab",
+  "ats": "greenhouse",
+  "slug": "heygen",
+  "note": "Video AI."
+ },
+ {
+  "name": "Photoroom",
+  "tier": "C",
+  "category": "neolab",
+  "ats": "ashby",
+  "slug": "photoroom",
+  "note": "Vision AI."
+ },
+ {
+  "name": "Astranis",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "astranis",
+  "note": "Space systems software."
+ },
+ {
+  "name": "Cockroach Labs",
+  "tier": "C",
+  "category": "bigco",
+  "ats": "greenhouse",
+  "slug": "cockroachlabs",
+  "note": "Distributed DB."
+ }
+]

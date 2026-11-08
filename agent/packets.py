@@ -1,5 +1,5 @@
 """Per-job application packet: fit analysis, cover letter (md + pdf), answers bank, resume choice."""
-import json, os, re, shutil, subprocess
+import json, os, re, shutil, subprocess, memory, humanize
 from common import (db, log, now, run_claude, extract_json, slug, APPS, PROFILE, SETTINGS, budget_add, budget_used, http_json)
 
 PACKET_PROMPT = """You are preparing a job application for ONE candidate. You may use WebFetch/WebSearch to read the posting and research the company. Ground every company-specific statement in what you actually read; never invent facts about the company or the candidate.
@@ -34,7 +34,7 @@ Return ONLY this JSON object:
 "form_questions":[{{"question":"","answer":"","needs_user":false,"confidence":"high|medium|low"}}],
 "needs_user":["things only the candidate can supply"],"deadline":"if stated, else ''","visa_note":"what the posting says about sponsorship/location, else ''",
 "company_notes":"hiring process / what they value, from what you read (2-4 sentences)","referral_priority":"high|medium|low",
-"eligibility":"ok|uncertain|blocked","eligibility_reason":"blocked ONLY for a hard stop stated in the posting/form: requires existing work authorization in a country where the candidate has none and says it does not sponsor; US citizenship/clearance; PhD-only; wrong level; must be enrolled in a program the candidate is not in. uncertain if sponsorship is unstated for an on-site role outside India. Candidate: Indian citizen, India-authorized only, will relocate if sponsored."}}
+"eligibility":"ok|uncertain|blocked","eligibility_reason":"blocked ONLY for a hard stop stated in the posting/form: requires existing work authorization in a country where the candidate has none and says it does not sponsor; US citizenship/clearance; PhD-only; wrong level; must be enrolled in a program the candidate is not in. uncertain if sponsorship is unstated for an on-site role outside the candidate's home country. Candidate: {auth_note}"}}
 """
 
 
@@ -102,10 +102,19 @@ def build_packet(job_id):
     prompt = PACKET_PROMPT.format(profile=json.dumps(prof, indent=1), rules="\n".join("- " + r for r in PROFILE["hard_rules"]),
                                   company=job["company"], title=job["title"], location=job["location"], url=job["url"], ats=job["ats"],
                                   desc=(job["desc"] or "")[:3500], triage=triage_note, questions_block=qb,
-                                  variants=json.dumps(PROFILE["resume_variant_guidance"]))
-    text, _ = run_claude(prompt, kind="packet", allowed_tools="WebFetch,WebSearch", model=SETTINGS["claude_model_packets"],
+                                  variants=json.dumps(PROFILE["resume_variant_guidance"]), auth_note=memory.auth_note())
+    text, _ = run_claude(prompt, kind="packet", allowed_tools="WebFetch,WebSearch",
                          timeout=SETTINGS["packet_timeout_s"], max_turns=14)
     p = extract_json(text)
+    style_warn = []
+    if p.get("cover_letter"):
+        p["cover_letter"], w = humanize.polish(p["cover_letter"], "cover letter")
+        style_warn += [f"cover letter: {x}" for x in w]
+    for k, v in list((p.get("answers") or {}).items()):
+        if v:
+            p["answers"][k], w = humanize.polish(v, "answer")
+            style_warn += [f"{k}: {x}" for x in w]
+    p["style_warnings"] = style_warn
     if p.get("resume") not in PROFILE["resume_variants"]:
         p["resume"] = (tri["resume"] if tri else "AI_Engineer")
     # files
@@ -135,6 +144,12 @@ def build_packet(job_id):
     c.execute("UPDATE jobs SET status=? WHERE id=?", ("ineligible" if p.get("eligibility") == "blocked" else (cur if cur == "watch" else "packet"), job_id))
     c.commit()
     budget_add(c, "packets")
+    try:
+        if p.get("eligibility") != "blocked" and ((tri and (tri["fit"] or 0) >= 60) or cur == "watch"):
+            import resume
+            resume.advise(job_id)
+    except Exception as e:
+        log(f"resume advice skipped: {e}")
     log(f"packet ready: {job['company']} | {job['title']} -> {d}")
     return d
 
@@ -148,9 +163,11 @@ def pending_for_packets(limit):
                         ORDER BY (t.verdict='APPLY') DESC, t.fit DESC LIMIT ?""", (limit,)).fetchall()
 
 
-def run_packets():
+def run_packets(per_cycle=None):
     c = db()
     left = SETTINGS["max_packets_per_day"] - budget_used(c, "packets")
+    if per_cycle:
+        left = min(left, per_cycle)
     if left <= 0:
         return []
     built = []

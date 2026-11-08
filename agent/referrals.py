@@ -1,6 +1,7 @@
 """Referral planning. Uses YOUR LinkedIn connections export (data/Connections.csv) -- no logged-in scraping of LinkedIn.
 Per target job: rank connections at that company, have Claude research the best ones on the public web, draft the outreach."""
 import csv, json, os, re
+import outreach, packets
 from common import db, log, now, run_claude, extract_json, DATA, ROOT, SETTINGS, PROFILE, budget_add, budget_used
 
 ALIASES = {"google deepmind": ["deepmind", "google deepmind", "google"], "meta": ["meta", "facebook", "meta ai"], "microsoft": ["microsoft", "microsoft research"],
@@ -84,7 +85,7 @@ def rank(hits, family):
     return sorted(hits, key=s, reverse=True)
 
 
-REF_PROMPT = """You are a networking coach helping a final-year undergrad from a non-prestigious university in India get a referral/intro for a specific job. Be concrete and honest. Use WebSearch/WebFetch (public web only: personal sites, GitHub, Google Scholar, arXiv, blogs, talks, company pages, X/Twitter public posts). Do NOT try to log into LinkedIn.
+REF_PROMPT = """You are a networking coach helping the candidate below get a referral/intro for a specific job. Be concrete and honest. Use WebSearch/WebFetch (public web only: personal sites, GitHub, Google Scholar, arXiv, blogs, talks, company pages, X/Twitter public posts). Do NOT try to log into LinkedIn.
 
 CANDIDATE
 {summary}
@@ -99,7 +100,7 @@ Why it fits (triage): {reason}
 TASKS
 {tasks}
 
-Rules for messages: first-person, human, <= 90 words for DMs, <= 280 characters for a LinkedIn connection note, specific hook from THEIR actual public work (cite what you found), ONE clear low-friction ask, no flattery, no "I'd love to pick your brain". Never claim anything not in the candidate summary. Offer a one-paragraph blurb they can paste to the recruiter. Do not mention Quiet Intelligence's unreleased work beyond what is public on the candidate's site.
+Do NOT write any messages: a later step writes them in the candidate's own voice. Fill the message fields with empty strings. Put the specific, checkable hook about each person (what they built/wrote/said, with URLs) in "evidence".
 
 Return ONLY JSON:
 {{"strategy":"2-4 sentences: who to contact first, in what order, and what to ask for (advice first vs referral)",
@@ -126,7 +127,7 @@ def plan_referral(job_id):
     else:
         cb = ("NO EXISTING CONNECTIONS FOUND" + (" (connections file is present but nothing matched this company)" if conns else " (no LinkedIn export found in data/ yet)") +
               ". Find warm paths on the public web instead: the hiring manager or team named in the posting, authors of the team's recent papers/blog posts, open-source maintainers of the relevant repo, "
-              "and BBDU Your City / Indian-undergrad alumni at the company if you can find any publicly.")
+              f"and alumni of the candidate's university ({PROFILE.get('education', '')}) at the company if you can find any publicly.")
         tasks = ("1. Identify 2-3 specific real people (cite where you found them) who work on the relevant team/problem.\n"
                  "2. Rank them by approachability and relevance.\n3. Draft cold-outreach messages (connection note, DM, email if a public email exists).")
     if SETTINGS.get("linkedin_browse", True) and budget_used(c, "linkedin") < SETTINGS.get("max_linkedin_per_day", 1):
@@ -138,7 +139,7 @@ def plan_referral(job_id):
             log(f"linkedin scout failed ({e}); falling back to public-web referral research")
     prompt = REF_PROMPT.format(summary=PROFILE["summary"], projects=" | ".join(PROFILE["projects"][:3]), site=PROFILE["website"], company=job["company"],
                                title=job["title"], location=job["location"], url=job["url"], reason=(tri["reason"] if tri else ""), contacts_block=cb, tasks=tasks)
-    text, _ = run_claude(prompt, kind="referral", allowed_tools="WebSearch,WebFetch", model=SETTINGS["claude_model_packets"], timeout=SETTINGS["packet_timeout_s"], max_turns=16)
+    text, _ = run_claude(prompt, kind="referral", allowed_tools="WebSearch,WebFetch", timeout=SETTINGS["packet_timeout_s"], max_turns=16)
     r = extract_json(text)
     return _write(c, job, tri, pk, r, len(hits), "web")
 
@@ -148,14 +149,25 @@ def _write(c, job, tri, pk, r, nhits, how):
     out += [f"- {x}" for x in r.get("before_you_message", [])]
     for i, t in enumerate(r.get("targets", []), 1):
         out += ["", f"## Target {i}: {t.get('name')} ({t.get('role') or t.get('headline')})", f"Why: {t.get('why_them') or t.get('why_likely_to_respond')}", f"Evidence: {t.get('evidence')}", f"Profile: {t.get('profile_url')}",
-                f"Reach via: {t.get('how_to_reach') or ('LinkedIn (' + str(t.get('degree','')) + ' degree)')}", f"Likely to respond because: {t.get('why_likely_to_respond','')}", f"Mutual: {t.get('mutual','')}", "", "**Connection note**", t.get("connection_note", ""), "", "**DM**", t.get("dm", ""), "", "**Follow-up (+4-5 days)**",
+                f"Reach via: {t.get('how_to_reach') or ('LinkedIn (' + str(t.get('degree','')) + ' degree)')}", f"Likely to respond because: {t.get('why_likely_to_respond','')}", f"Mutual: {t.get('mutual','')}", "", "**Connection note**", t.get("connection_note", ""), "", "**DM (short)**", t.get("dm", ""), "", "**DM (longer option)**", t.get("dm_long", ""), "", "**Follow-up (+5-7 days, only once)**",
                 t.get("followup", ""), "", "**If 2nd degree: ask a mutual connection to introduce you**", t.get("intro_ask_for_mutual", ""), "", "**Blurb they can forward**", t.get("blurb_for_referrer", "")]
-    d = pk["dir"] if pk else os.path.join(DATA, "referrals")
+    try:
+        msgs = outreach.draft(job, r.get("targets", []), fit=(tri["reason"] if tri else ""))
+        by = {(m.get("name") or "").strip().lower(): m for m in msgs}
+        for t in r.get("targets", []):
+            m = by.get((t.get("name") or "").strip().lower())
+            if m:
+                t.update(connection_note=m.get("connect_note", ""), dm=m.get("dm_short", ""), dm_long=m.get("dm_long", ""), followup=m.get("followup", ""),
+                         intro_ask_for_mutual=m.get("ask_mutual", ""), blurb_for_referrer=m.get("blurb", ""), style_warnings=m.get("_style_warnings", []))
+    except Exception as e:
+        log(f"outreach drafting failed: {e}")
+    d = pk["dir"] if pk else packets.packet_dir(job)
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, "REFERRAL.md")
     open(path, "w", encoding="utf-8").write("\n".join(out))
     c.execute("UPDATE packets SET referral_at=? WHERE job_id=?", (now(), job["id"]))
     c.execute("UPDATE watch SET referral_state='plan ready' WHERE job_id=?", (job["id"],))
+    c.execute("INSERT OR REPLACE INTO referrals(job_id,dir,at,how) VALUES(?,?,?,?)", (job["id"], d, now(), how))
     c.commit()
     budget_add(c, "referrals")
     log(f"referral plan written via {how}: {path} ({nhits} connections from export)")

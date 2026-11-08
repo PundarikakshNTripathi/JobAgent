@@ -1,232 +1,169 @@
 # JobAgent
 
-A local, Claude-powered job-search and application-prep agent. It finds roles within about 30 minutes of them going live, judges fit, writes cover letters and answers, picks the right resume, fills the application form in a dedicated Chrome window, scouts LinkedIn (read-only) for the best people to ask for a referral, tracks prestigious roles you should not cold-apply to, and tells you every morning what to do to improve your odds.
+A local, provider-agnostic agent for the job search. It watches hundreds of company career pages, judges what fits you, prepares the application (cover letter, answers, resume advice), plans who to contact for a referral and writes the messages in your voice, fills the application form in a separate browser, and tells you every morning what to do to raise your odds.
 
-**It never presses Submit. You do.**
+**It never presses Submit. You do.** Your data stays on your machine.
 
-It runs on your Claude subscription through the headless `claude -p` CLI (model: Sonnet 5.5). Everything else is Python standard library; no `pip install`.
+Works with the AI tools you already have: **Claude Code, Google Antigravity (Gemini), Codex, Gemini CLI, any OpenAI-compatible API (OpenAI, OpenRouter, Ollama, LM Studio, the Gemini API), the Anthropic API, Hermes Agent, oh-my-pi, or any command-line tool.** You choose which model does which job.
+
+Standard library Python only; no `pip install`. Windows is the primary target (toasts, scheduler); the core runs anywhere.
 
 ---
 
 ## 1. Quick start
 
-Prerequisites (already set up on this machine): Windows, Python 3.12+, the `claude` CLI signed in to your subscription, Node.js (Playwright MCP is fetched by `npx`), Google Chrome.
-
 ```
-cd C:\path\to\JobAgent
-python agent\run.py gui            # open the GUI (http://127.0.0.1:8777), or double-click start_gui.bat
-python agent\run.py cycle          # or run one full cycle from the terminal
+python agent/run.py init        # creates your private workspace and profile (or use the GUI wizard)
+python agent/run.py doctor      # shows which model providers, browser and scheduler are ready
+python agent/run.py gui         # opens http://127.0.0.1:8777 and starts a guided tour
+python agent/run.py cycle       # one full run from the terminal (the GUI has a button too)
+python agent/run.py install-schedule   # optional: run automatically (Windows Task Scheduler)
 ```
 
-First time only, in the **JobAgent Chrome** (it opens by itself on the first fill/LinkedIn/YC step, own profile in `data/chrome-profile`): log in to LinkedIn and Work at a Startup once. The sessions persist.
+You need at least one model provider: install a CLI (Claude Code, Antigravity `agy`, Codex, Gemini CLI) or set an API key (`OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`) or run Ollama. Form filling and LinkedIn scouting need a browser-capable provider (Claude Code today) plus Chrome or Edge.
 
-Always-on: `python agent\run.py install-schedule` creates the Windows task `JobAgentCycle`, which runs a cycle every `poll_every_minutes` (30). `run.py disable-schedule` / `enable-schedule` pause and resume it.
+### Your workspace (private)
+
+All personal data lives in a **workspace**, never in the code folder: profile, settings, database, applications, referral plans, voice samples, memory, browser profile, logs. It is created on first run at `~/JobAgent`, or wherever `$JOBAGENT_HOME` or a one-line `.jobagent_home` file points. The repository ships only defaults, templates and skills, so you can update the code freely and publish it without leaking anything. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
-## 2. What a cycle does
+## 2. What it does
 
-`python agent\run.py cycle` (the scheduler runs exactly this; a lock file prevents overlap):
+`python agent/run.py cycle` (the scheduler runs exactly this):
 
-| # | Step | Claude? | What happens |
+| # | Step | Uses a model? | What happens |
 |---|---|---|---|
-| 1 | **Poll** | no | ~150 company boards on public ATS feeds (Greenhouse, Lever, Ashby, SmartRecruiters, Workable) plus **official career sites** of big companies: Google, Microsoft, NVIDIA, Qualcomm, Micron, Netflix (Eightfold), Atlassian, Amazon (India, Singapore, UK, Germany, Canada, US), and Workday tenants (NVIDIA, Intel, Salesforce, Adobe, Micron, Cisco, HP, Capital One, Mastercard, Broadcom/VMware, Samsung, PayPal, Workday, Zoom, Cadence). Also YC role pages, Hacker News (jobs + Who is hiring), VC portfolio boards (Getro), SimplifyJobs + speedyapply GitHub lists, Remotive, RemoteOK. About 25k postings per poll; duplicates across sources are removed. **Google Careers** is parsed from the data embedded in its results page (India, Singapore, UK, Switzerland, Germany, Canada, US; intern + early-career levels). Apple, Meta, Uber and Oracle publish no usable feed: the daily web scout covers them and the dashboard lists their search links. |
-| 2 | **Filter + score** | no | `config/filters.json`: title family (ML systems, ML/AI engineer, data science, SWE, low-level, research, safety), drops senior / PhD-only / non-engineering titles, reads required years of experience, early-career markers, location (India / remote / relocate) and visa-sponsorship signals. Track priority weights your order: MLSys > AI/ML eng, DS, applied > SWE > research > safety. |
-| 3 | **Instant alert** | no | A brand-new posting scoring at least `instant_alert_score` triggers a desktop toast immediately. |
-| 4 | **Watchlist** | no | Prestige roles (frontier-lab fellowships/residencies, pre-docs, safety programs) move to the high-stakes watchlist (section 6). |
-| 5 | **Triage** | yes | Batches of 15 postings get APPLY / STRETCH / SKIP, a fit score, the resume variant, and the exact YOE or visa gap. Tuned for a numbers game (generous). |
-| 6 | **Scout** | yes | Once a day: open-web search for X/Twitter hiring posts, bot-blocking career pages (Google, DeepMind, Meta, Microsoft, Apple, Mistral, IBM...), pre-docs / residencies / fellowships (corporate, neolab, academic, research orgs, safety programs), and new companies worth tracking (`out/new_companies_to_review.md`). |
-| 7 | **Packets** | yes | For APPLY/STRETCH jobs: reads the real posting and company pages and writes `out/applications/<date>_<company>_<role>/` with the cover letter (md + PDF), answers, real form questions (Greenhouse API), resume copy, honest odds, gaps and an eligibility check. A hard stop (no sponsorship where you need it, PhD-only...) marks the job `ineligible`. |
-| 8 | **Referral plans** | yes | Watchlist first, then packets. LinkedIn scouting (section 7), else public-web research. Output: `REFERRAL.md` in the packet folder. |
-| 9 | **Form fill** | yes | APPLY packets: opens the form in the JobAgent Chrome, fills every field, uploads resume / cover letter / transcript, declines EEO questions, leaves unknowns blank, reports `READY_TO_SUBMIT` / `PARTIAL` / `BLOCKED`, then notifies you. |
-| 10 | **Today page + dashboard** | yes (small) | `out/today.md`, `out/dashboard.html`, `out/digest-<date>.md`, and a morning toast. |
-
-Operating stance: a **numbers game on normal-stakes roles** (apply broadly, fast), **referral-first on high-stakes roles**, and a **daily improvement plan** sized to your 5 hours.
+| 1 | **Inbox** | yes | Processes anything you pasted (see section 5). |
+| 2 | **Poll** | no | About 150 company boards (Greenhouse, Lever, Ashby, SmartRecruiters, Workable), official career sites (Google, Microsoft, NVIDIA, Qualcomm, Micron, Netflix, Atlassian, Amazon, 15 Workday tenants), YC role pages, Hacker News, VC portfolio boards, GitHub internship lists, remote boards. About 25k postings per poll, deduplicated. |
+| 3 | **Filter + score** | no | Title family, level, years of experience, early-career markers, location realism (home country / remote / relocate; drops places that need a work permit you cannot get), visa-sponsorship signals, your learned preferences. Strong new matches trigger an instant alert. |
+| 4 | **Watchlist** | no | Prestige roles (fellowships, residencies, pre-docs, safety programs, frontier-lab programs) are tracked, never auto-applied. |
+| 5 | **Triage** | yes | Batches get APPLY / STRETCH / SKIP, a fit score, the resume to use and the exact gap. |
+| 6 | **Scout** | yes | Every few days: open-web search for X/Twitter hiring posts, bot-blocking career pages, pre-docs/residencies/fellowships, newly funded companies. |
+| 7 | **Packets** | yes | Reads the real posting, writes the cover letter (md + PDF if `tectonic` is configured), answers, real form questions, honest odds and gaps, eligibility check. Strong fits also get resume advice. |
+| 8 | **Referral plans** | yes | For **every** APPLY/STRETCH job: who to contact (1st-degree, 2nd-degree via mutual connections, or public-web paths), what they work on, and messages in your voice. |
+| 9 | **Form fill** | yes | Opens the form in a dedicated browser, fills every section, uploads your files, declines EEO questions, leaves unknowns blank, reports READY / PARTIAL / BLOCKED. Account-wall systems (Workday...) are detected up front and skipped. |
+| 10 | **Reflect, plan, dashboard** | yes (small) | Updates the agent's memory from your outcomes, builds today's plan, a morning toast, and `out/dashboard.html`. |
 
 ---
 
-## 3. The GUI
+## 3. Choosing models (provider and agent agnostic)
 
-`python agent\run.py gui` (or double-click `start_gui.bat`) opens `http://127.0.0.1:8777`. It listens on localhost only; every state-changing request needs a custom header and only whitelisted commands can run. Light and dark themes (More > Toggle light / dark), mobile-friendly, keyboard: `/` focuses search, `Esc` closes the detail panel.
+**GUI: Settings → Which model does which job.** Each task has its own provider, model and effort. Providers are detected automatically; press *Test* to check one. If a provider is missing, fails or hits its daily budget, the next in the fallback chain is used.
 
-**Layout.** A sidebar with live counts, a search bar, `Run full cycle`, and a `More` menu (Poll, Triage, Web scout, Rebuild today's plan, Rebuild dashboard, Refresh YC profile, theme).
+| Task | What it does | Good fit |
+|---|---|---|
+| triage, ingest, chat | fast judgement and conversation | a fast, well-calibrated model |
+| packet, outreach, resume | writing in your voice | your best writer |
+| referral, scout | research and synthesis | any model; non-browsing models get JobAgent's own web retrieval |
+| today, reflect | plans and memory | cheapest capable model |
+| fill, linkedin, yc | drive a browser | browser-capable provider (Claude Code) |
 
-**Views (sidebar)**
+`python agent/run.py bench` compares providers **on your own data** (triage agreement, speed, tokens; whether research URLs are alive and mention the company). Use it instead of trusting claims. Details, adapter status and measured numbers: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-| View | What you see |
-|---|---|
-| **Today** (landing) | Greeting, headline numbers (ready to submit, need fields, best matches, watchlist, new strong), the forms waiting for you, today's improvement plan as a tick-off checklist (ticks are remembered for the day), outreach to do, and the top watchlist items. |
-| **Ready to submit** | Forms filled in the JobAgent Chrome. Open the tab, review, press Submit yourself, then `Mark applied`. |
-| **Needs you** | Partial or blocked fills. Open the card's Details > Form fill report to see exactly which fields are waiting. |
-| **Watchlist** | Prestige roles (fellowships, residencies, pre-docs, safety programs): tracked, not applied to. Main action: `Plan referral`. |
-| **Prepared** | Applications with a packet but no filled form yet. Main action: `Fill the form`. |
-| **Best matches** | Triaged APPLY/STRETCH jobs without a packet yet. Main action: `Prepare application`. |
-| **New** | New postings with a high heuristic score, not triaged yet. |
-| **Applied** | What you marked as applied. |
-| **Programs** | Pre-docs, residencies, fellowships with windows and eligibility, with links. |
-| **Activity** | The live agent log. |
-
-**Job cards.** Company avatar, title (click for details), chips for location type (India / Remote / Relocate), visa-sponsorship signal, verdict (APPLY / STRETCH), the resume variant chosen, a fit ring (0-100), and the one-paragraph reason with the YOE/visa gap. Buttons: the contextual main action, `Details`, `Referral plan`, `Mark applied`, `Skip`. Filter chips (location, Tier S/A) and a sort (best fit / newest) sit above the list.
-
-**Detail panel (click a title or `Details`).** Tabs: **Application** (the packet: odds, strengths, gaps, company notes, answers), **Cover letter** (copy button), **Referral & outreach** (strategy, targets, connection notes, DMs, follow-ups; hover any paragraph for a `Copy` button), **Form fill report**. If something does not exist yet, the tab offers a `Generate` button.
-
-A click on any action runs in the background (toast confirms it); the sidebar footer shows today's Claude calls and what is running.
-
-Typical flow: open **Today**, work through **Ready to submit**, skim **Best matches** and press `Prepare application`/`Fill the form` on the ones you like, copy messages from **Referral & outreach** and send them yourself, tick off the plan.
+Adding a tool JobAgent doesn't know: choose provider `custom` (or Hermes / omp presets) and set its command in the settings file, e.g. `"llm": {"custom": {"custom": {"cmd": ["mytool", "--print"], "prompt_via": "stdin"}}}`.
 
 ---
 
-## 4. The CLI
+## 4. The GUI
 
-Run from `C:\path\to\JobAgent` as `python agent\run.py <command>`. Job ids are shown in `top`, the dashboard and the GUI.
+`python agent/run.py gui` (or `start_gui.bat`). Localhost only. First run: a setup wizard, then a guided tour (re-run it from **More → Take the tour**). Light/dark themes, works on a phone-width window, `/` focuses search.
+
+| Group | View | What you do there |
+|---|---|---|
+| Work | **Today** | headline numbers, forms waiting for you, the day's improvement plan (tick items off), outreach to do |
+| | **Ready to submit** / **Needs you** | review filled forms and press Submit yourself; see which fields are waiting |
+| | **Prepared** / **Best matches** / **New** | one-click *Prepare application*, *Fill the form*, *Referral plan*; skip with a reason (teaches the agent) |
+| | **Applied** | what you marked applied |
+| Network | **Watchlist** / **Programs** | prestige roles and fellowships: referral first, deadlines, eligibility |
+| Tools | **Inbox** | paste links, job text or messages you found anywhere, plus your context |
+| | **Ask the agent** | chat about your pipeline; it proposes actions, you confirm each |
+| | **My voice** | paste messages you really sent and your draft→final edits; see what the agent has learned |
+| Setup | **Usage & cost** | tokens, calls, seconds and cost per provider and task, last 14 days |
+| | **Settings** | providers, model routing, schedule frequency, limits, budgets per provider, notifications, privacy-relevant toggles |
+| | **Help**, **Activity** | short docs, live log |
+
+Click a card title for the **detail panel**: Application (odds, strengths, gaps, answers), Cover letter, Referral & outreach (hover any paragraph to copy), Resume suggestions, Form fill report.
+
+---
+
+## 5. Things you find yourself: Inbox, chat, agent loop
+
+- **Inbox** (GUI) or `run.py inbox add "<text or link>" "<your context>"`: the agent extracts the opportunities, fetches the pages, judges fit (your items jump the queue), and for promising ones prepares the packet and referral plan.
+- **Ask the agent** (GUI) or `run.py chat "..."`: knows your profile, memory and pipeline. It *proposes* actions (prepare, plan referral, mark, remember, add to inbox, hand a goal to the agent loop); nothing runs until you click.
+- **Agent loop** `run.py agent "<goal>"`: a bounded ReAct loop (default 12 steps) over tools such as search jobs, get job, packet, referral, resume, mark, remember, web search, fetch, inbox. It works with any provider. It cannot submit applications, change settings or touch the schedule.
+
+---
+
+## 6. Messages that sound like you
+
+Outreach is written in a separate step from research, using a style playbook of machine "tells" to avoid, **your own sent messages** (`My voice`), and **how you edited past drafts**. Output is linted (stock phrases, dashes as punctuation, lists, exclamation marks, repetitive "I" openings), auto-fixed, and rewritten once if needed. Cover letters and form answers get the same treatment. The more you use *My voice* and mark edits, the less you need to change. Playbooks live in `defaults/skills/`; put your own in `<workspace>/skills/` to override them.
+
+---
+
+## 7. Referrals, LinkedIn, YC
+
+- **Referral plans** are made for every APPLY/STRETCH job: 1st-degree connections first, 2nd-degree with a mutual connection who can forward a two-line ask, then public-web paths (team members, paper authors, maintainers). Output is `REFERRAL.md` in the job's folder, with a short and a longer DM, a connection note for cold contacts, one follow-up, and a blurb a referrer can forward.
+- **LinkedIn scouting** (off by default; enable in Settings): drives your logged-in browser **read-only** (an always-on guard blocks Connect/Message/Follow/Like/Comment/Send), about 10 page loads per company, paced, capped per day. **You send every message yourself.** This is automated use of a logged-in account, which LinkedIn's terms discourage; keep the cap low. You can also drop LinkedIn's data export (zip or `Connections.csv`) into `<workspace>/data/` and it will be used to prioritise people you already know.
+- **YC Work at a Startup**: `run.py yc-profile` rewrites your profile from your own facts only (never invents; never touches privacy or account settings).
+
+---
+
+## 8. Submitting safely
+
+1. The fill prompt forbids the final button, account creation, CAPTCHAs and verification.
+2. A page guard blocks submit events, final-button clicks and application POSTs for `guard_minutes`, with a visible banner; Next/Continue/Save still work.
+3. A watchdog reports any confirmation page that appears in the agent browser.
+4. Legal attestations and eligibility declarations are left for you unless the exact answer is in your profile.
+5. Prestige roles are never auto-applied; chat and the agent loop cannot submit.
+
+---
+
+## 9. CLI reference
+
+`python agent/run.py <command>`; job ids appear in the GUI, `top` and `status`.
 
 | Command | What it does |
 |---|---|
-| `cycle` | Full pipeline (section 2). What the scheduler runs. |
-| `poll` | Fetch + score + store + instant alerts. No Claude. |
-| `triage` | Claude judges the best untriaged postings (respects the daily cap). |
-| `scout` | Force the web scout now (jobs, programs, new companies). |
-| `packet <id>` | Build the application packet for one job. |
-| `referral <id>` | Referral plan for one job (LinkedIn scouting if the daily LinkedIn cap allows, else public-web research). Alias: `linkedin <id>`. |
-| `fill <id>` | Fill the application form in the JobAgent Chrome. Never submits. |
-| `today [--force]` | Build `out/today.md`: forms waiting, improvement tasks, outreach, watchlist, programs. |
-| `top [n]` | Print the best current matches with ids. |
-| `watch` | List the high-stakes watchlist. |
-| `status` | Counts by status and today's usage per step. |
-| `usage` | Claude tokens and list-price-equivalent cost by step (today / 7 days). |
-| `dashboard` | Rebuild `out/dashboard.html` and the markdown digest. |
-| `mark <id> applied\|skip\|dismissed` | Record your decision (applied jobs leave the queues). |
-| `yc-profile` | Rewrite your Work at a Startup profile from `config/profile.json` facts only; before/after in `out/yc_profile_before_after.md`. |
-| `gui [--no-open]` | Local web GUI. |
-| `notify-test` | Send a test notification. |
-| `install-schedule` / `remove-schedule` | Create / delete the Windows scheduled task. |
-| `enable-schedule` / `disable-schedule` | Pause / resume it without deleting. |
-
-Examples:
-
-```
-python agent\run.py top 30                        # what is best right now
-python agent\run.py packet "<id>"                 # prepare one application
-python agent\run.py referral "<id>"               # who to message and what to say
-python agent\run.py fill "<id>"                   # fill the form, then review and submit it yourself
-python agent\run.py mark "<id>" applied
-```
+| `init` / `doctor` | create workspace + profile / check providers, browser, scheduler |
+| `cycle` | full pipeline |
+| `poll` / `triage` / `scout` | single stages (`poll` costs no tokens) |
+| `top [n]` / `watch` / `status` / `usage` | what to look at / watchlist / counts / model usage per provider and task |
+| `packet <id>` / `referral <id>` / `resume <id>` / `fill <id>` | prepare / plan contacts / tailor resume advice / fill form (never submits) |
+| `mark <id> applied\|skip\|dismissed [reason]` | record your decision; reasons teach the agent |
+| `inbox [add "<text>" "<context>"]` / `chat "<message>"` / `agent "<goal>"` | bring in outside opportunities / talk / run a goal |
+| `today [--force]` / `dashboard` / `reflect` | daily plan / dashboard / update memory now |
+| `providers [test <name>]` / `bench [n]` | list or test providers / benchmark on your data |
+| `gui [--no-open]` / `yc-profile` | web GUI / YC profile |
+| `install-schedule` / `remove-schedule` / `enable-schedule` / `disable-schedule` / `set-interval <min>` | scheduling |
 
 ---
 
-## 5. Submitting safely (the one rule)
+## 10. Configuration
 
-The agent fills forms but cannot submit:
+Edit in the GUI (Settings) or in `<workspace>/config/settings.json` (only your overrides; shipped defaults are in `defaults/settings.json`). Highlights: `llm.routing` (provider/model/effort per task), `llm.fallbacks`, `llm.budgets` (daily calls/tokens per provider), `poll_every_minutes`, `cycle_minutes_budget` (time box for heavy model work per run, so polling stays fresh; the rest resumes next run) with `packets_per_cycle` and `referrals_per_cycle`, daily caps (`max_triage_calls_per_day`, `max_packets_per_day`, `max_referrals_per_day`, `max_linkedin_per_day`, `max_fills_per_day`), `auto_fill`, `fill_window_local_hours`, `web.search_backend` (`ddg` or `brave` with `$BRAVE_API_KEY`), `humanize`, `memory`, `notify` (desktop toast, ntfy push), `high_stakes` rules. Other overrides: `filters.json` (title families, weights, exclusions), `companies.json` (boards to poll; same name/slug replaces a default), `profile.json` (your facts, resume variants, hard rules, form defaults, preferences).
 
-1. The fill prompt forbids the final button and forbids creating accounts, solving CAPTCHAs and email verification (it reports `BLOCKED` instead). Legal attestations and eligibility declarations are left for you unless the exact answer is in your profile (the export-control "not a U.S. person" answer is).
-2. A guard script injected into every page of the agent browser swallows `submit` events, final-button clicks ("Submit application", "Send", "Finish"...) and application-POST requests for `guard_minutes` (9), with a red banner showing the unlock time. "Next / Continue / Save" still work, so multi-step forms can be filled.
-3. The fill process has a hard timeout shorter than the guard window. After every fill a watchdog notifies you if a confirmation page appears in the browser, so a submission can never go unnoticed.
-
-After the banner disappears, press Submit yourself in that tab. Each fill session's transcript is kept so you can audit what the agent clicked (`research/audit_sessions.py`).
+Anything empty in `profile.form_defaults` is never guessed: it appears under "Needs you".
 
 ---
 
-## 6. High-stakes watchlist (prestige roles)
+## 11. Costs and limits
 
-Frontier-lab fellowships/residencies, pre-docs (Google DeepMind, Meta FAIR, Microsoft Research, neolabs, academic institutes, research orgs) and AI-safety programs are **never auto-applied**. They are tracked with their window and eligibility, a draft packet is prepared (never filled), the referral plan comes first, and `out/today.md` pushes daily tasks and outreach to raise your odds. You decide when to apply. The rules live in `settings.json -> high_stakes` (title patterns, categories, companies). To drop an entry, `mark <id> skip`.
-
----
-
-## 7. Referrals, LinkedIn and YC
-
-**LinkedIn (read-only).** `agent/linkedin.py` drives the JobAgent Chrome, logged in as you:
-
-1. Searches your **1st-degree** connections at the target company; if none, **2nd-degree** (mutual connections give an intro path).
-2. Opens at most 4 profiles (about 10 page loads per company, with paced waits) and judges who is most likely to respond: relevant team, approachable seniority, activity, shared background.
-3. Writes connection notes, DMs, follow-ups, an ask a mutual connection could forward, and a blurb a referrer can paste. **You send every message yourself.**
-
-An always-on page guard blocks Connect / Message / Follow / Like / Comment / Send / Endorse. Cap: `max_linkedin_per_day` (5). This is automated use of a logged-in session, which LinkedIn's terms discourage; keep the cap modest. If you also drop LinkedIn's data export (zip or `Connections.csv`, any date-versioned filename) into `data/` or `data/linkedin/`, the newest one is used to prioritise people you already know.
-
-**YC Work at a Startup.** `run.py yc-profile` rewrites your profile with truthful facts only (on the first run it removed unsupported claims) and never touches privacy, visibility or account settings. The YC role pages are also a job source, with visa-sponsorship and minimum-experience fields.
+Polling, filtering, de-duplication and the watchlist rules use no tokens. Headless Claude calls run in lean mode (about 0.7k input tokens overhead instead of about 27k). Browser steps (form fill, LinkedIn, YC) are the expensive ones. Every call is logged by provider and task (**Usage & cost**); set per-provider daily budgets and the agent falls back to another provider when one is exhausted. Costs shown are list-price equivalents; subscriptions are rate-limited rather than billed per token.
 
 ---
 
-## 8. Configuration
+## 12. Troubleshooting
 
-Edit files in `config/` (no code changes needed). Restart the GUI after changes; scheduled cycles pick them up on their next run.
-
-**`settings.json`**
-
-| Key | Meaning |
-|---|---|
-| `claude_model`, `claude_model_packets`, `claude_model_fill`, `today_model` | Model per stage (all `claude-sonnet-5-5`). |
-| `poll_every_minutes` | Scheduler interval (re-run `install-schedule` after changing). |
-| `min_heuristic_score_for_llm`, `instant_alert_score` | Funnel width and alert threshold. |
-| `max_triage_calls_per_day`, `triage_batch_size`, `max_triage_per_cycle`, `triage_desc_chars` | Triage volume (calls x batch = postings judged per day). |
-| `max_packets_per_day`, `packet_min_fit` | How many applications get prepared, and the lowest fit that qualifies. |
-| `max_referrals_per_day`, `max_linkedin_per_day`, `linkedin_browse` | Referral plans and LinkedIn scouting volume. |
-| `max_fills_per_day`, `auto_fill`, `fill_window_local_hours` | Form fills per day, on/off, and the hours when the browser may open. |
-| `scout_every_days` | Web scout cadence (1 = daily). |
-| `guard_minutes`, `chrome_debug_port`, `gui_port` | Submit-lock window, agent Chrome port, GUI port. |
-| `notify.windows_toast`, `notify.ntfy_topic` | Desktop toasts; optional phone push via ntfy.sh (third-party service; titles only). |
-| `high_stakes` | Watchlist rules. |
-
-**`filters.json`**: title families with base weights (your track order), exclusion patterns, early-career markers, niche keywords (CUDA, Triton, inference...), India / remote markers, YOE thresholds.
-**`companies.json`**: boards to poll (`tier` S/A/B/C, `category`, `ats`, `slug`). Add a company by copying a row; new-company suggestions land in `out/new_companies_to_review.md`. Regenerate the research table with `python research\make_report.py` (`research/TARGET_COMPANIES.md`).
-**`profile.json`** (gitignored; `profile.example.json` is the template): your facts, resume variants, hard rules, form defaults, preferences, Quiet Intelligence details, academics, transcript path. Anything empty in `form_defaults` is never guessed: it appears under "Needs you". After your re-exam, update the CGPA/backlog text and replace the file in `data/transcripts/`.
+- `doctor` shows what is missing. A provider "not set up" needs its CLI on PATH or its API key in the environment variable shown.
+- Fill says BLOCKED: the employer's system wants an account (Workday-style) or a CAPTCHA. Use the packet to apply manually.
+- Headless `agy` sometimes tries to use tools it can't get permission for; JobAgent tells it not to and falls back to the next provider.
+- Chrome profile is in use and you want to move the workspace: close the agent's Chrome window first (`chrome_profile_dir` in settings points to it).
+- Cycle "already running": `<workspace>/data/cycle.lock` expires after 100 minutes.
+- `tools/probe_ats.py` finds which company slugs have a public job board; `tools/audit_sessions.py` lists what a browser session clicked.
 
 ---
 
-## 9. Token economy and limits
+## 13. Publishing your own copy
 
-- Headless calls run in **lean mode**: no user MCP servers, no skills, no default system prompt, only the built-in tools needed. A trivial call costs under 1k input tokens instead of about 27k.
-- Polling, filtering, dedup and the watchlist rules cost nothing.
-- Browser-driven steps (form fill, LinkedIn, YC) are the expensive ones (hundreds of thousands of cached input tokens per run). Lower `max_fills_per_day` / `max_linkedin_per_day` if your plan runs short.
-- `run.py usage` (and the GUI status line) show consumption. Costs are list-price equivalents; a subscription is rate-limited, not billed per token.
-- Current limits are set for a numbers game: 16 triage calls (up to about 240 postings judged), 12 packets, 6 referral plans, 5 LinkedIn companies, 8 form fills, daily scouting.
-
----
-
-## 10. Files
-
-```
-agent/      run.py (CLI)  gui.py + gui_static/index.html (GUI)  feeds.py  sources_extra.py  sources_big.py  scoring.py  pipeline.py  stakes.py  packets.py  referrals.py
-            linkedin.py  fill.py  browser.py  scout.py  today.py  yc_profile.py  dashboard.py  common.py
-config/     settings.json  filters.json  companies.json  profile.json (local)  profile.example.json
-data/       jobs.db (SQLite state)  chrome-profile/  transcripts/  linkedin/   (local, gitignored)
-out/        applications/<date>_<company>_<role>/  (README.md packet, cover_letter.pdf, REFERRAL.md, FILL_REPORT.md, resume)
-            dashboard.html  today.md  digest-<date>.md  notifications.log  new_companies_to_review.md  yc_profile_before_after.md
-logs/       agent.log  gui_runs.log
-research/   TARGET_COMPANIES.md and the probes used to discover job-board feeds
-```
-
----
-
-## 11. Troubleshooting
-
-- **A feed is missing or empty:** the poll log (`logs/agent.log`) lists failing sources; ATS boards occasionally rename slugs. Fix the slug in `companies.json`.
-- **A fill stops at BLOCKED:** the site wants an account (Workday-style) or a CAPTCHA/verification. Create the account yourself, or use the packet to apply manually.
-- **A required dropdown does not list your school:** the agent picks "Other" when offered, otherwise leaves it and lists it under "Needs you".
-- **Chrome did not open:** the agent starts Chrome with `--remote-debugging-port=9333` using `data/chrome-profile`; if the port is busy, close that Chrome window and retry.
-- **Cycle "already running":** `data/cycle.lock` expires after 100 minutes; delete it if a run crashed.
-- **Too many / too few results:** adjust `min_heuristic_score_for_llm`, `packet_min_fit`, the title patterns in `filters.json` and the daily caps.
-- **Want it quiet:** `run.py disable-schedule`, or set `auto_fill` to false so forms are only filled when you press `Fill form`.
-
----
-
-## 12. Limits worth knowing
-
-- X/Twitter has no free API and scraping it is against its terms: it is covered by the daily web scout plus a saved X search link on the dashboard.
-- Cover letters are drafts: skim each once. The honesty rules in `profile.json -> hard_rules` (no overclaiming TernixEngine, Amazon placement or Aegis scope; CGPA and backlog stated truthfully) are enforced in the prompts, not by code.
-- Salary, start-date details beyond the profile, AI-tool-use disclosures and legal attestations that are not in the profile are always left for you.
-
----
-
-## 13. Where you can realistically get hired (read before mass-applying)
-
-You are an Indian citizen authorised to work in India only. What that means in practice (researched Nov 2026; verify specifics per posting):
-
-| Route | Reality |
-|---|---|
-| **India offices / remote-from-India** (Google Bengaluru/Hyderabad, Microsoft, Amazon, NVIDIA, Qualcomm, Atlassian, YC and neolab remote roles) | The easy path: no visa needed. Apply widely. |
-| **US internships** | CPT is tied to enrolment at a US school, so it does not apply to you. The only route is an employer-sponsored J-1 intern (through a designated sponsor) and big tech rarely recruits India-campus students into it. Low odds; worth an application only with a referral or when the posting mentions sponsorship / international students. |
-| **US full-time** | Needs H-1B (lottery, wage-weighted selection since 2026; a $100k new-petition fee was struck down in court but DHS proposed a ~$103k fee rule in Aug 2026, status in flux). Large companies sponsor routinely; startups below Series A often cannot. Best path is usually to start in an India/Singapore/UK/Canada office and transfer, or O-1 later with strong proof of work. |
-| **UK / Canada / Singapore / Germany / Switzerland** | Employer-sponsored work permits are normal for new grads at larger firms (Google Zurich/Singapore, Amazon, Microsoft). Internships there still usually need student status or a sponsored visa. Worth applying when the posting offers relocation or visa support. |
-| **China** | Not realistic for an Indian citizen without a local work permit; the agent now drops these (e.g. NVIDIA Shanghai). |
-
-Big tech vs startups / neolabs: big tech runs campus pipelines with online assessments and has visa machinery, but a non-local intern pool is tiny; startups and neolabs decide fast on proof of work and referrals (your strength) and can hire you remotely as a contractor in India, but many cannot sponsor visas. Frontier labs sponsor full-time hires but their fellowships often require existing work authorisation (Anthropic Fellows does). So: apply broadly to India/remote roles, apply to relocation roles when sponsorship is stated or a referral exists, treat US on-site internships as long shots, and ignore roles that require local work authorisation you do not have. The scorer penalises no-sponsorship signals (-25), US/Canada/UK on-site internships without a sponsorship signal (-10) and drops China; the triage prompt carries the same rules.
+The repository contains no personal data, but its **git history may** if you developed it with your own profile checked in. Before making a copy public, create a fresh history (for example a new repository from the current tree) and add a licence of your choice. Never commit your workspace.
