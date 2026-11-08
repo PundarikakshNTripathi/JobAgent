@@ -72,6 +72,7 @@ Adding a tool JobAgent doesn't know: choose provider `custom` (or Hermes / omp p
 | Group | View | What you do there |
 |---|---|---|
 | Work | **Today** | headline numbers, forms waiting for you, the day's improvement plan (tick items off), outreach to do |
+| | **All jobs** | a job-board style browser over *every* tracked posting, analysed or not. Every row links straight to the employer's posting. Filters: keywords, role family, level (internship / new grad / early career / experienced), location type, visa-sponsorship signal, company tier, AI-analysed or not, company, source, first seen, minimum match, has referral plan / packet; sort and page size. Jobs the AI hasn't reviewed yet show the posting excerpt and an *Analyse & prepare* button |
 | | **Ready to submit** / **Needs you** | review filled forms and press Submit yourself; see which fields are waiting |
 | | **Prepared** / **Best matches** / **New** | one-click *Prepare application*, *Fill the form*, *Referral plan*; skip with a reason (teaches the agent) |
 | | **Applied** | what you marked applied |

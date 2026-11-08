@@ -58,6 +58,78 @@ def state():
             "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME}
 
 
+def _csv(q, k):
+    return [x for x in (q.get(k) or [""])[0].split(",") if x]
+
+
+def browse_jobs(q):
+    """Job-board style search over ALL tracked postings (analysed or not). q = parsed query string."""
+    c = db()
+    w, a = ["j.active=1"], []
+    one = lambda k, d="": (q.get(k) or [d])[0]
+    status = one("status")
+    if status:
+        w.append("j.status IN (%s)" % ",".join("?" * len(status.split(","))))
+        a += status.split(",")
+    elif one("hidden") != "1":
+        w.append("j.status NOT IN ('skipped','dismissed','ineligible')")
+    for term in one("q").lower().split():
+        w.append("(lower(j.company) LIKE ? OR lower(j.title) LIKE ? OR lower(j.location) LIKE ?)")
+        a += [f"%{term}%"] * 3
+    for key, col in (("family", "j.family"), ("loc", "j.loc_class"), ("tier", "j.tier"), ("source", "j.ats"), ("visa", "j.visa"), ("verdict", "t.verdict"), ("category", "j.category")):
+        vals = _csv(q, key)
+        if vals:
+            w.append(f"{col} IN ({','.join('?' * len(vals))})")
+            a += vals
+    if one("company"):
+        w.append("lower(j.company) LIKE ?")
+        a.append(f"%{one('company').lower()}%")
+    intern = "(lower(j.title) LIKE '%intern%' OR lower(j.title) LIKE '%co-op%' OR lower(j.title) LIKE '%apprentice%' OR lower(j.title) LIKE '%residen%' OR lower(j.title) LIKE '%fellow%')"
+    lv = one("level")
+    if lv == "intern":
+        w.append(intern)
+    elif lv == "newgrad":
+        w.append(f"j.early=1 AND NOT {intern}")
+    elif lv == "earlyany":
+        w.append("j.early=1")
+    elif lv == "experienced":
+        w.append("j.early=0")
+    an = one("analysis")
+    if an == "analysed":
+        w.append("t.job_id IS NOT NULL")
+    elif an == "not":
+        w.append("t.job_id IS NULL")
+    hr = "(EXISTS (SELECT 1 FROM referrals r WHERE r.job_id=j.id) OR EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id AND p.referral_at IS NOT NULL))"
+    if one("hasref") == "1":
+        w.append(hr)
+    if one("hasref") == "0":
+        w.append("NOT " + hr)
+    if one("haspacket") == "1":
+        w.append("EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)")
+    if one("minscore"):
+        w.append("COALESCE(t.fit,j.score)>=?")
+        a.append(float(one("minscore")))
+    if one("days"):
+        w.append("j.first_seen>=date('now',?,'localtime')")
+        a.append(f"-{int(one('days'))} day")
+    order = {"fit": "COALESCE(t.fit,j.score) DESC", "score": "j.score DESC", "new": "j.first_seen DESC", "company": "lower(j.company), COALESCE(t.fit,j.score) DESC"}.get(one("sort", "fit"), "COALESCE(t.fit,j.score) DESC")
+    per = max(5, min(100, int(one("per", "25"))))
+    page = max(1, int(one("page", "1")))
+    base = f"FROM jobs j LEFT JOIN triage t ON t.job_id=j.id WHERE {' AND '.join(w)}"
+    total = c.execute(f"SELECT COUNT(*) {base}", a).fetchone()[0]
+    rows = c.execute(f"""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.posted,j.first_seen,j.score,j.loc_class,j.family,j.early,j.yoe,j.visa,j.status,j.category,
+                                substr(j.desc,1,700) snippet,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,{hr} has_ref,(EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)) has_packet,
+                                (t.job_id IS NOT NULL) analysed {base} ORDER BY {order} LIMIT ? OFFSET ?""", (*a, per, (page - 1) * per)).fetchall()
+    return {"total": total, "page": page, "per": per, "items": [dict(r) for r in rows]}
+
+
+def job_facets():
+    c = db()
+    g = lambda col, lim=15: [[r[0] or "(none)", r[1]] for r in c.execute(f"SELECT {col}, COUNT(*) n FROM jobs WHERE active=1 GROUP BY {col} ORDER BY n DESC LIMIT {lim}").fetchall()]
+    return {"family": g("family"), "loc": g("loc_class"), "tier": g("tier"), "source": g("ats", 20), "visa": g("visa"), "company": g("company", 60),
+            "category": g("category", 15), "total": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0]}
+
+
 def providers_info():
     import llm
     now = dt.datetime.now().timestamp()
@@ -147,6 +219,10 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._send(200, page(), "text/html")
             if path == "/api/state":
                 return self._j(state())
+            if path == "/api/jobs":
+                return self._j(browse_jobs(q))
+            if path == "/api/facets":
+                return self._j(job_facets())
             if path == "/api/packet":
                 return self._j(packet_files((q.get("id") or [""])[0]))
             if path == "/api/log":

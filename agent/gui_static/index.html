@@ -66,6 +66,10 @@ pre.log{background:var(--panel);border:1px solid var(--line);border-radius:12px;
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:95;align-items:center}.t{background:#111827;color:#fff;border-radius:10px;padding:9px 16px;font-weight:600;box-shadow:var(--shadow)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
 .menu-btn{display:none}
+.board{display:grid;grid-template-columns:270px 1fr;gap:18px;align-items:start}.fpanel{position:sticky;top:72px;max-height:calc(100vh - 90px);overflow:auto}
+.fpanel select,.fpanel input:not([type=checkbox]):not([type=range]){width:100%}.fpanel input[type=range]{width:100%;padding:0}
+.fchk{display:flex;gap:7px;align-items:center;font-size:13px;color:var(--text);font-weight:500;padding:2px 0}.fchk input{width:auto}
+@media(max-width:980px){.board{grid-template-columns:1fr}.fpanel{position:static;max-height:none}}
 /* tour */
 #tour{position:fixed;inset:0;z-index:100;display:none}#tour.on{display:block}
 #tour .shade{position:absolute;inset:0;background:rgba(5,8,16,.62)}#tour .hole{position:absolute;border-radius:12px;box-shadow:0 0 0 9999px rgba(5,8,16,.62);transition:.25s;pointer-events:none}
@@ -99,7 +103,7 @@ pre.log{background:var(--panel);border:1px solid var(--line);border-radius:12px;
 <script>
 const H={'X-JobAgent':'1','Content-Type':'application/json'};
 let S={jobs:[],programs:[],budget:{},running:[],plan:null,inbox_pending:0},VIEW='today',LOC='all',TIER='all',SORT='fit',CUR=null,DTAB='README',CFG=null,TOURI=0;
-const NAV=[['Work'],['today','Today','☀'],['ready','Ready to submit','✅'],['fill','Needs you','✋'],['packet','Prepared','📄'],['match','Best matches','🎯'],['new','New','✨'],['applied','Applied','📨'],
+const NAV=[['Work'],['today','Today','☀'],['browse','All jobs','🔍'],['ready','Ready to submit','✅'],['fill','Needs you','✋'],['packet','Prepared','📄'],['match','Best matches','🎯'],['new','New','✨'],['applied','Applied','📨'],
  ['Network'],['watch','Watchlist','⭐'],['programs','Programs','🎓'],['Tools'],['inbox','Inbox','📥'],['chat','Ask the agent','💬'],['voice','My voice','✍'],
  ['Setup'],['usage','Usage & cost','📈'],['settings','Settings','⚙'],['help','Help','❓'],['log','Activity','📜']];
 const COL=['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#14b8a6','#ec4899','#84cc16','#f97316'];
@@ -131,7 +135,7 @@ function card(j){const loc=j.loc_class=='india'?['Home','ok']:j.loc_class=='remo
  <div><div class="co">${esc(j.company)} &middot; tier ${esc(j.tier)} &middot; ${esc(j.ats)}</div><div class="title"><a href="#" onclick="openDrawer('${esc(j.id)}');return false">${esc(j.title)}</a></div>
  <div class="chips"><span class="pill ${loc[1]}">${loc[0]}</span><span class="pill">${esc((j.location||'').slice(0,46))}</span>${v?`<span class="pill ${v[1]}">${v[0]}</span>`:''}${j.verdict?`<span class="pill ${j.verdict=='APPLY'?'ok':'warn'}">${j.verdict}</span>`:''}${j.has_ref?'<span class="pill acc">referral plan</span>':''}${j.resume?`<span class="pill">resume: ${esc(j.resume)}</span>`:''}</div></div>${ring(j)}
  <div class="why">${esc(j.reason||j.watch_note||'')}${j.yoe_gap?` <i>Gap: ${esc(j.yoe_gap)}</i>`:''}</div>
- <div class="actions">${primary(j)}<button class="btn sm" onclick="openDrawer('${esc(j.id)}')">Details</button>${j.status!='watch'?`<button class="btn sm" onclick="run('referral','${esc(j.id)}')">Referral plan</button>`:''}
+ <div class="actions">${primary(j)}<a class="btn sm" href="${esc(j.url)}" target="_blank" rel="noopener">Posting &#8599;</a><button class="btn sm" onclick="openDrawer('${esc(j.id)}')">Details</button>${j.status!='watch'?`<button class="btn sm" onclick="run('referral','${esc(j.id)}')">Referral plan</button>`:''}
  <button class="btn ok sm" onclick="run('mark','${esc(j.id)} applied')">Mark applied</button><button class="btn warn sm" onclick="reasonSkip('${esc(j.id)}')">Skip</button></div></div>`}
 function rows(){const q=$('q').value.toLowerCase();let r=S.jobs.filter(sel[VIEW]);if(LOC!='all')r=r.filter(j=>j.loc_class==LOC);if(TIER=='SA')r=r.filter(j=>['S','A'].includes(j.tier));
  if(q)r=r.filter(j=>(j.company+' '+j.title+' '+j.location).toLowerCase().includes(q));r.sort(SORT=='new'?(a,b)=>String(b.first_seen).localeCompare(String(a.first_seen)):(a,b)=>(b.fit??b.score)-(a.fit??a.score));return r}
@@ -147,6 +151,46 @@ function today(){const ready=S.jobs.filter(sel.ready),fill=S.jobs.filter(sel.fil
 function tick(k,v){let d={};try{d=JSON.parse(localStorage.getItem('ja-done-'+S.day)||'{}')}catch(e){}d[k]=v;try{localStorage.setItem('ja-done-'+S.day,JSON.stringify(d))}catch(e){}render()}
 function programs(){const q=$('q').value.toLowerCase();const r=S.programs.filter(p=>JSON.stringify(p).toLowerCase().includes(q));
  return `<h2>Pre-docs, residencies, fellowships</h2><p class="sub">Prestige programs are tracked, never auto-applied. Build the relationship first.</p><div class="grid">${r.map(p=>`<div class="card job"><div class="av" style="background:${col(p.org)}">${esc((p.org||'?')[0])}</div><div><div class="co">${esc(p.org)} &middot; ${esc(p.kind)}</div><div class="title"><a href="${esc(p.url)}" target="_blank">${esc(p.name)}</a></div></div><span></span><div class="why"><b>Window:</b> ${esc(p.window)}<br><b>Eligible:</b> ${esc(p.eligibility)}</div></div>`).join('')||'<div class="empty">Nothing yet. Run the web scout.</div>'}</div>`}
+/* ---------- all jobs: job-board style browser */
+let BR={items:[],total:0},BF={q:'',family:[],level:'',loc:[],tier:[],visa:[],analysis:'',source:'',company:'',days:'',minscore:0,hasref:'',haspacket:'',hidden:'',sort:'fit',per:25,page:1},FAC=null,bt=null;
+const FAM=[['mlsys','ML systems / inference / kernels'],['ml_eng','AI / ML engineering, applied science'],['ds','Data science'],['lowlevel','Low-level systems'],['swe','Software engineering'],['ai_research','AI / ML research'],['safety','AI safety']];
+const chk2=(arr,v)=>arr.includes(v)?'checked':'';
+function bq(){const p=new URLSearchParams();for(const k in BF){const v=BF[k];if(Array.isArray(v)){if(v.length)p.set(k,v.join(','))}else if(v!==''&&v!==0&&v!==null)p.set(k,v)}return p.toString()}
+function bset(k,v){BF[k]=v;if(k!=='page')BF.page=1;loadBrowse()}
+function btoggle(k,v,on){const a=BF[k];const i=a.indexOf(v);if(on&&i<0)a.push(v);if(!on&&i>=0)a.splice(i,1);BF.page=1;loadBrowse()}
+function bsearch(v){BF.q=v;BF.page=1;clearTimeout(bt);bt=setTimeout(loadBrowse,300)}
+function bclear(){BF={q:'',family:[],level:'',loc:[],tier:[],visa:[],analysis:'',source:'',company:'',days:'',minscore:0,hasref:'',haspacket:'',hidden:'',sort:'fit',per:25,page:1};$('view').dataset.view='';render()}
+function boxes(key,opts,counts){return opts.map(([v,l])=>`<label class="fchk"><input type="checkbox" ${chk2(BF[key],v)} onchange="btoggle('${key}','${v}',this.checked)"> ${l}${counts&&counts[v]!=null?` <span class="tm">${counts[v].toLocaleString()}</span>`:''}</label>`).join('')}
+function browseView(){const f=FAC||{family:[],loc:[],tier:[],source:[],company:[],visa:[]};const cm=a=>Object.fromEntries(a.map(x=>[x[0],x[1]]));const fc=cm(f.family),lc=cm(f.loc),tc=cm(f.tier);
+ return `<h2>All jobs</h2><p class="sub">Every posting the agent tracks, analysed or not. Every row links straight to the employer's posting. <span id="b-total"></span></p>
+ <div class="board"><div class="card fpanel"><div class="row"><b>Filters</b><span class="grow"></span><button class="btn sm ghost" onclick="bclear()">Clear</button></div>
+  <div class="field"><label>Keywords (company, title, location)</label><input value="${esc(BF.q)}" oninput="bsearch(this.value)" placeholder="e.g. kernel intern bengaluru"></div>
+  <div class="field"><label>Role family <span class="tm">(first two are highest priority)</span></label>${boxes('family',FAM,fc)}</div>
+  <div class="field"><label>Level</label><select onchange="bset('level',this.value)">${[['','Any level'],['intern','Internship / program'],['newgrad','New grad / early career'],['earlyany','Any early-career'],['experienced','Experienced']].map(([v,l])=>`<option value="${v}" ${BF.level==v?'selected':''}>${l}</option>`).join('')}</select></div>
+  <div class="field"><label>Location</label>${boxes('loc',[['india','Home country'],['remote','Remote'],['relocate','Relocate abroad']],lc)}</div>
+  <div class="field"><label>Visa sponsorship signal</label>${boxes('visa',[['yes','Sponsors'],['unknown','Not stated'],['no','No sponsorship']])}</div>
+  <div class="field"><label>Company tier</label>${boxes('tier',[['S','S'],['A','A'],['B','B'],['C','C']],tc)}</div>
+  <div class="field"><label>Analysis</label><select onchange="bset('analysis',this.value)">${[['','Analysed or not'],['analysed','AI-analysed only'],['not','Not analysed yet']].map(([v,l])=>`<option value="${v}" ${BF.analysis==v?'selected':''}>${l}</option>`).join('')}</select></div>
+  <div class="field"><label>Company</label><input list="b-co" value="${esc(BF.company)}" onchange="bset('company',this.value)" placeholder="any"><datalist id="b-co">${f.company.map(c=>`<option value="${esc(c[0])}">`).join('')}</datalist></div>
+  <div class="field"><label>Source</label><select onchange="bset('source',this.value)"><option value="">All sources</option>${f.source.map(s=>`<option value="${esc(s[0])}" ${BF.source==s[0]?'selected':''}>${esc(s[0])} (${s[1]})</option>`).join('')}</select></div>
+  <div class="field"><label>First seen</label><select onchange="bset('days',this.value)">${[['','Any time'],['1','Last 24 hours'],['3','Last 3 days'],['7','Last week'],['14','Last 2 weeks'],['30','Last month']].map(([v,l])=>`<option value="${v}" ${BF.days==v?'selected':''}>${l}</option>`).join('')}</select></div>
+  <div class="field"><label>Minimum match: <b id="b-ms">${BF.minscore}</b></label><input type="range" min="0" max="95" step="5" value="${BF.minscore}" oninput="$('b-ms').textContent=this.value" onchange="bset('minscore',+this.value)"></div>
+  <div class="field"><label>Pipeline</label><label class="fchk"><input type="checkbox" ${BF.hasref=='1'?'checked':''} onchange="bset('hasref',this.checked?'1':'')"> has a referral plan</label><label class="fchk"><input type="checkbox" ${BF.haspacket=='1'?'checked':''} onchange="bset('haspacket',this.checked?'1':'')"> has an application packet</label><label class="fchk"><input type="checkbox" ${BF.hidden=='1'?'checked':''} onchange="bset('hidden',this.checked?'1':'')"> include skipped</label></div></div>
+  <div><div class="row" style="margin-bottom:10px"><span class="grow"></span><span class="tm">Sort</span><select onchange="bset('sort',this.value)">${[['fit','Best match'],['new','Newest'],['company','Company A-Z'],['score','Heuristic score']].map(([v,l])=>`<option value="${v}" ${BF.sort==v?'selected':''}>${l}</option>`).join('')}</select><select onchange="BF.per=+this.value;bset('page',1)">${[10,25,50,100].map(n=>`<option ${BF.per==n?'selected':''}>${n}</option>`).join('')}</select></div>
+  <div class="grid" id="b-list"><span class="spin"></span>Loading</div><div class="row" id="b-pager" style="margin-top:14px;justify-content:center"></div></div></div>`}
+function rowCard(j){const loc=j.loc_class=='india'?['Home','ok']:j.loc_class=='remote'?['Remote','acc']:['Relocate','warn'];const v=j.visa=='yes'?['sponsors visa','ok']:j.visa=='no'?['no sponsorship','bad']:null;
+ const lvl=/intern|co-op|apprentice|residen|fellow/i.test(j.title)?'Internship/program':j.early?'Early career':'Experienced';const fam=(FAM.find(f=>f[0]==j.family)||[0,j.family])[1];
+ return `<div class="card job"><div class="av" style="background:${col(j.company)}">${esc(j.company[0]||'?')}</div><div><div class="co">${esc(j.company)} &middot; tier ${esc(j.tier)} &middot; ${esc(j.ats)} ${j.first_seen?'&middot; seen '+esc(j.first_seen.slice(0,10)):''}</div>
+ <div class="title"><a href="${esc(j.url)}" target="_blank" rel="noopener" title="Open the employer's posting">${esc(j.title)} &#8599;</a></div>
+ <div class="chips"><span class="pill ${loc[1]}">${loc[0]}</span><span class="pill">${esc((j.location||'').slice(0,42))}</span><span class="pill">${lvl}</span><span class="pill">${esc(fam)}</span>${v?`<span class="pill ${v[1]}">${v[0]}</span>`:''}
+ ${j.analysed?`<span class="pill ${j.verdict=='APPLY'?'ok':j.verdict=='STRETCH'?'warn':''}">AI: ${esc(j.verdict)} ${Math.round(j.fit||0)}</span>`:'<span class="pill">not analysed yet</span>'}${j.has_ref?'<span class="pill acc">referral plan</span>':''}${j.has_packet?'<span class="pill acc">packet</span>':''}</div></div>${ring(j)}
+ <div class="why">${esc(j.analysed?(j.reason||''):(j.snippet||'').slice(0,220))}</div>
+ <div class="actions"><a class="btn pri sm" href="${esc(j.url)}" target="_blank" rel="noopener">Open posting &#8599;</a><button class="btn sm" onclick="openDrawer('${esc(j.id)}')">Details</button><button class="btn sm" onclick="run('packet','${esc(j.id)}')">${j.has_packet?'Refresh application':'Analyse &amp; prepare'}</button>
+ <button class="btn sm" onclick="run('referral','${esc(j.id)}')">Referral plan</button><button class="btn ok sm" onclick="run('mark','${esc(j.id)} applied')">Applied</button><button class="btn warn sm" onclick="reasonSkip('${esc(j.id)}')">Skip</button></div></div>`}
+async function loadBrowse(first){if(!FAC)FAC=await api('/api/facets');if(first&&!$('b-list'))return;const r=await api('/api/jobs?'+bq());BR=r;const el=$('b-list');if(!el)return;
+ el.innerHTML=r.items.map(rowCard).join('')||'<div class="empty">No postings match these filters.</div>';$('b-total').textContent=`${r.total.toLocaleString()} match${r.total==1?'':'es'} of ${FAC.total.toLocaleString()} tracked.`;
+ const pages=Math.max(1,Math.ceil(r.total/r.per));$('b-pager').innerHTML=pages>1?`<button class="btn sm" ${r.page<=1?'disabled':''} onclick="bset('page',${r.page-1})">Previous</button><span class="tm">Page ${r.page} of ${pages}</span><button class="btn sm" ${r.page>=pages?'disabled':''} onclick="bset('page',${r.page+1})">Next</button>`:'';
+ if(first===true)window.scrollTo(0,0)}
 /* ---------- inbox */
 function inboxView(){return `<h2>Inbox</h2><p class="sub">Found something somewhere else (a tweet, a friend's message, a newsletter, a careers page)? Paste links or text and tell the agent why it matters. It reads the pages, judges fit, and prepares the application and referral plan if it's worth it.</p>
  <div class="card"><div class="field"><label>Paste links, job text, messages, notes</label><textarea id="ib-text" rows="6" placeholder="https://jobs.example.com/123 ... or paste the whole job description ... or 'Priya at Acme says the kernels team is hiring interns'"></textarea></div>
@@ -225,8 +269,8 @@ function helpView(){return `<h2>Help</h2><p class="sub">Everything in two minute
 function render(){nav();filters();const v=$('view');
  $('foot').innerHTML=`Today<br><b>${S.budget.triage_calls||0}</b> triage &middot; <b>${S.budget.packets||0}</b> packets &middot; <b>${S.budget.referrals||0}</b> referrals &middot; <b>${S.budget.fills||0}</b> fills<br>${S.running.length?`<span class="spin"></span>${esc(S.running.join(', '))}`:'idle'}`;
  $('cyc').innerHTML=S.running.includes('cycle')?'<span class="spin"></span>Running...':'Run full cycle';
- const keep=['inbox','chat','voice','usage','settings'];if(keep.includes(VIEW)&&v.dataset.view==VIEW)return;v.dataset.view=VIEW;
- if(VIEW=='today')v.innerHTML=today();else if(VIEW=='programs')v.innerHTML=programs();else if(VIEW=='inbox')v.innerHTML=inboxView();else if(VIEW=='chat')v.innerHTML=chatView();else if(VIEW=='voice')v.innerHTML=voiceView();
+ const keep=['inbox','chat','voice','usage','settings','browse'];if(keep.includes(VIEW)&&v.dataset.view==VIEW)return;v.dataset.view=VIEW;
+ if(VIEW=='today')v.innerHTML=today();else if(VIEW=='browse'){v.innerHTML=browseView();loadBrowse(true)}else if(VIEW=='programs')v.innerHTML=programs();else if(VIEW=='inbox')v.innerHTML=inboxView();else if(VIEW=='chat')v.innerHTML=chatView();else if(VIEW=='voice')v.innerHTML=voiceView();
  else if(VIEW=='usage')v.innerHTML=usageView();else if(VIEW=='settings')v.innerHTML=settingsView();else if(VIEW=='help')v.innerHTML=helpView();else if(VIEW=='log')v.innerHTML='<h2>Activity</h2><p class="sub">Latest agent log</p><pre class="log" id="logbox"></pre>';
  else{const r=rows(),t=NAV.find(n=>n[0]==VIEW)[1];v.innerHTML=`<h2>${t}</h2><p class="sub">${r.length} shown</p><div class="grid">${r.slice(0,120).map(card).join('')||'<div class="empty">Nothing here yet.</div>'}</div>`}
  if(!keep.includes(VIEW))v.dataset.view=''}
@@ -239,13 +283,16 @@ function md(t){const lines=t.split('\n');let h='',list=false,para=[];const inl=s
  for(const l of lines){if(/^#{1,3} /.test(l)){flush();endl();const n=l.match(/^#+/)[0].length;h+=`<h${n}>${inl(l.replace(/^#+ /,''))}</h${n}>`}else if(/^\s*[-*] /.test(l)){flush();if(!list){h+='<ul>';list=true}h+=`<li>${inl(l.replace(/^\s*[-*] /,''))}</li>`}else if(!l.trim()){flush();endl()}else{endl();para.push(l.trim())}}flush();endl();return h}
 function cp(b){navigator.clipboard.writeText(b.dataset.t).then(()=>toast('Copied'))}
 const DT=[['README','Application'],['COVER','Cover letter'],['REFERRAL','Referral & outreach'],['RESUME','Resume'],['FILL','Form fill report']];
-async function openDrawer(id){const j=S.jobs.find(x=>x.id==id);if(!j)return;CUR=j;DTAB='README';
+async function openDrawer(id){const j=S.jobs.find(x=>x.id==id)||(BR.items||[]).find(x=>x.id==id);if(!j)return;CUR=j;DTAB='README';
  $('dh').innerHTML=`<div class="av" style="background:${col(j.company)}">${esc(j.company[0])}</div><div><div class="co">${esc(j.company)} &middot; ${esc(j.location||'')}</div><div class="title">${esc(j.title)}</div></div><div class="x"><a class="btn sm" href="${esc(j.url)}" target="_blank">Open posting</a> <button class="btn sm ghost" onclick="closeDrawer()">Close</button></div>`;
  $('drawer').classList.add('on');$('scrim').classList.add('on');drawerTab()}
 async function drawerTab(){$('dt').innerHTML=DT.map(([k,l])=>`<button class="${DTAB==k?'on':''}" onclick="DTAB='${k}';drawerTab()">${l}</button>`).join('');
  const b=$('db');b.innerHTML='<span class="spin"></span>Loading';const r=await api('/api/packet?id='+encodeURIComponent(CUR.id));
  const gen={README:'packet',COVER:'packet',REFERRAL:'referral',RESUME:'resume',FILL:'fill'}[DTAB];
- if(!r.exists){b.innerHTML=`<div class="empty">Nothing prepared yet.<br><br><button class="btn pri" onclick="run('packet','${esc(CUR.id)}');closeDrawer()">Prepare application</button> <button class="btn" onclick="run('referral','${esc(CUR.id)}');closeDrawer()">Plan referral</button><br><br><span class="sub">${esc(CUR.reason||'')}</span></div>`;return}
+ if(!r.exists){b.innerHTML=`<div class="card"><div class="row"><a class="btn pri" href="${esc(CUR.url)}" target="_blank" rel="noopener">Open the job posting &#8599;</a><span class="pill ${CUR.verdict?'acc':''}">${CUR.verdict?('AI review: '+CUR.verdict+' '+Math.round(CUR.fit||0)):'not analysed in depth yet'}</span></div>
+ ${CUR.reason?`<p>${esc(CUR.reason)}</p>`:''}${CUR.snippet?`<h3>From the posting</h3><p class="tm" style="white-space:pre-wrap">${esc(CUR.snippet)}</p>`:''}
+ <div class="row" style="margin-top:12px"><button class="btn pri" onclick="run('packet','${esc(CUR.id)}');closeDrawer()">Analyse &amp; prepare application</button><button class="btn" onclick="run('referral','${esc(CUR.id)}');closeDrawer()">Plan referral</button><button class="btn warn" onclick="reasonSkip('${esc(CUR.id)}');closeDrawer()">Skip</button></div>
+ <div class="tm" style="margin-top:10px">Heuristic match ${Math.round(CUR.score||0)} &middot; ${esc(CUR.family||'')} &middot; ${esc(CUR.ats||'')} &middot; first seen ${esc((CUR.first_seen||'').slice(0,10))}</div></div>`;return}
  const t=r.files[DTAB]||'';b.innerHTML=t?(DTAB=='COVER'?`<div class="blk" style="white-space:pre-wrap">${esc(t)}<button class="btn sm cp" onclick="cp(this)" data-t="${esc(t)}">Copy</button></div>`:md(t)):`<div class="empty">Not generated yet.<br><br><button class="btn pri" onclick="run('${gen}','${esc(CUR.id)}');closeDrawer()">Generate</button></div>`}
 function closeDrawer(){$('drawer').classList.remove('on');$('scrim').classList.remove('on')}
 /* ---------- tour + setup */
