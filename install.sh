@@ -18,11 +18,13 @@ have() { command -v "$1" >/dev/null 2>&1; }
 pkg_install() { # best effort, asks first
   local what="$1"
   if [ "$(ask "Install $what with your package manager? (y/n)" y)" != y ]; then return 1; fi
+  local SUDO="sudo"; [ -n "$TTY" ] || SUDO="sudo -n"   # unattended: never hang on a password prompt
+  [ "$(id -u)" = 0 ] && SUDO=""
   if have brew; then brew install "$what"
-  elif have apt-get; then sudo apt-get update -y && sudo apt-get install -y "$what"
-  elif have dnf; then sudo dnf install -y "$what"
-  elif have pacman; then sudo pacman -S --noconfirm "$what"
-  elif have zypper; then sudo zypper install -y "$what"
+  elif have apt-get; then $SUDO apt-get update -y -qq && $SUDO apt-get install -y -qq "$what"
+  elif have dnf; then $SUDO dnf install -y "$what"
+  elif have pacman; then $SUDO pacman -S --noconfirm "$what"
+  elif have zypper; then $SUDO zypper install -y "$what"
   else return 1; fi
 }
 
@@ -57,8 +59,15 @@ fi
 # 4. A browser for LinkedIn / YC / job boards / form filling
 if ! { have google-chrome || have google-chrome-stable || have chromium || have chromium-browser || have microsoft-edge || [ -d "/Applications/Google Chrome.app" ] || [ -d "/Applications/Chromium.app" ]; }; then
   say "No Chrome/Chromium found: installing Playwright's Chromium (used only by JobAgent)"
-  .venv/bin/python -m playwright install chromium || warn "Chromium download failed; install Google Chrome and re-run"
-  if [ "$(uname -s)" = Linux ]; then .venv/bin/python -m playwright install-deps chromium 2>/dev/null || warn "If the browser fails to start: sudo .venv/bin/python -m playwright install-deps chromium"; fi
+  if [ "$(uname -s)" = Linux ]; then
+    # Playwright's driver and Chromium need a few system libraries that minimal distros lack (root needed, asked first)
+    { ldconfig -p 2>/dev/null | grep -q libatomic.so.1; } || pkg_install libatomic1 || warn "libatomic1 missing: install it with your package manager"
+    if [ "$(ask "Install Chromium's system libraries (uses sudo)? (y/n)" y)" = y ]; then
+      SUDO="sudo"; [ -n "$TTY" ] || SUDO="sudo -n"; [ "$(id -u)" = 0 ] && SUDO=""
+      $SUDO "$APP/.venv/bin/python" -m playwright install-deps chromium || warn "Could not install browser libraries; run: sudo $APP/.venv/bin/python -m playwright install-deps chromium"
+    fi
+  fi
+  .venv/bin/python -m playwright install chromium || warn "Chromium download failed; install Google Chrome (or Chromium) and re-run"
 fi
 have node || warn "Node.js not found (optional: only for the fallback browser mode). https://nodejs.org"
 # 5. Workspace location
