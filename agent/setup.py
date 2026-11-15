@@ -111,7 +111,7 @@ def wizard(defaults=False, reconfigure=False):
         print(f"   browser check failed: {e}")
     # 4. Schedule
     print("\n4) When should it run by itself? (once or twice a day keeps AI usage low; you can always press 'Run pipeline now')")
-    ch = ask("   twice (09:00 and 18:00) / once (09:00) / custom / none", "twice")
+    ch = "none" if os.environ.get("JOBAGENT_SKIP_SCHEDULE") == "1" else ask("   twice (09:00 and 18:00) / once (09:00) / custom / none", "twice")
     import schedule as sch
     if ch.startswith("t"):
         print("   " + sch.install(["09:00", "18:00"]).replace("\n", "\n   "))

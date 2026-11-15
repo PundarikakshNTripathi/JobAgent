@@ -39,7 +39,6 @@ if [ -z "$PY" ]; then
   [ -n "$PY" ] || { warn "Install Python 3.10+ (https://www.python.org/downloads/) and run this again."; exit 1; }
 fi
 say "Python: $PY ($("$PY" -V 2>&1))"
-"$PY" -c 'import venv, sqlite3' 2>/dev/null || { [ "$(uname -s)" = Linux ] && pkg_install python3-venv; }
 # 2. Code
 if have git; then
   if [ -d "$APP/.git" ]; then say "Updating $APP"; git -C "$APP" pull --ff-only; else say "Downloading to $APP"; mkdir -p "$(dirname "$APP")"; git clone --depth 1 "$REPO" "$APP"; fi
@@ -49,7 +48,10 @@ else
 fi
 cd "$APP"
 # 3. Virtual environment + packages
-[ -d .venv ] || "$PY" -m venv .venv
+if [ ! -x .venv/bin/python ]; then
+  # Debian/Ubuntu ship Python without ensurepip unless python3-venv is installed: fall back to a pip-less venv + get-pip (no root needed)
+  "$PY" -m venv .venv 2>/dev/null || { rm -rf .venv; "$PY" -m venv --without-pip .venv && curl -fsSL https://bootstrap.pypa.io/get-pip.py | .venv/bin/python - -q; }
+fi
 .venv/bin/python -m pip install -q --upgrade pip
 .venv/bin/python -m pip install -q -r requirements.txt
 # 4. A browser for LinkedIn / YC / job boards / form filling
