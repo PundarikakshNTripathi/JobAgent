@@ -310,7 +310,7 @@ def main():
             doctor()
     elif cmd == "init":
         import setup
-        setup.wizard()
+        setup.wizard(defaults="--defaults" in a, reconfigure="--reconfigure" in a)
     elif cmd == "rescore":
         import visa
         print(visa.rescore_all(), "jobs rescored")

@@ -1,7 +1,7 @@
 """Shared helpers: workspace paths, layered config, SQLite store, logging, notifications.
 Core code never contains personal data: everything personal lives in the user's WORKSPACE (see below) and stays local.
 Stdlib only on purpose (no pip needed)."""
-import json, os, re, sqlite3, subprocess, datetime as dt, urllib.request, shutil
+import json, os, re, sqlite3, subprocess, sys, datetime as dt, urllib.request, shutil
 
 # ------------------------------------------------------------------ silent subprocesses (Windows)
 # A scheduled, windowless Python that starts console programs (claude, agy, powershell, schtasks, node...) makes Windows flash a console window for each one.
@@ -250,11 +250,17 @@ def notify(title, body):
     except OSError:
         pass
     n = SETTINGS.get("notify", {})
-    if n.get("windows_toast") and os.name == "nt":
+    if n.get("windows_toast", True) or n.get("desktop", True):
         try:
-            _ps_toast(title, body)
+            if os.name == "nt":
+                _ps_toast(title, body)
+            elif sys.platform == "darwin":
+                esc = lambda s: s.replace("\\", "\\\\").replace('"', '\\"')
+                subprocess.run(["osascript", "-e", f'display notification "{esc(body)}" with title "{esc(title)}"'], capture_output=True, timeout=10)
+            elif shutil.which("notify-send"):
+                subprocess.run(["notify-send", "-a", "JobAgent", title, body], capture_output=True, timeout=10)
         except Exception as e:
-            log(f"toast failed: {e}")
+            log(f"desktop notification failed: {e}")
     if n.get("ntfy_topic"):
         try:
             rq = urllib.request.Request(f"{n.get('ntfy_server', 'https://ntfy.sh')}/{n['ntfy_topic']}", data=body.encode("utf-8"),

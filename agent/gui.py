@@ -347,7 +347,10 @@ class H(http.server.BaseHTTPRequestHandler):
                 p = os.path.abspath(str(d.get("path", "")))
                 if not p.startswith(os.path.abspath(OUT)) or not os.path.exists(p):
                     return self._j({"error": "path not allowed"}, 400)
-                os.startfile(p)
+                if os.name == "nt":
+                    os.startfile(p)
+                else:
+                    subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 return self._j({"ok": True})
             if path == "/api/settings":
                 patch = {k: v for k, v in (d.get("patch") or {}).items() if k in SETTING_KEYS}

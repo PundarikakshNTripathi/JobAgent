@@ -1,0 +1,2 @@
+# JobAgent's core is standard-library Python; the browser layer (LinkedIn, YC Work at a Startup, job boards, form filling) needs Playwright.
+playwright>=1.50
