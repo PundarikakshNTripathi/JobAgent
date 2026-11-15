@@ -307,15 +307,27 @@ def _http(url, body, headers, timeout):
         raise LLMError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
 
 
+_THINK = re.compile(r"<think>.*?</think>\s*", re.S)
+
+
 def _openai_compat(prompt, route, o, name):
     pdef = registry()[name]
     body = {"model": route.get("model") or (pdef.get("models") or [""])[0], "messages": [{"role": "system", "content": LEAN_SYSTEM}, {"role": "user", "content": prompt}]}
     if route.get("effort") in ("low", "medium", "high") and pdef.get("efforts"):
         body["reasoning_effort"] = route["effort"]
+    if name == "local":
+        # Hybrid-thinking local models: reason step by step only where judgement matters (triage, ranking, reflection, the agent); answer
+        # directly for extraction and browsing steps. Sampling follows the model card's recommendations for each mode.
+        lc = common.SETTINGS["llm"].get("local", {})
+        think = o.get("kind") in lc.get("thinking_kinds", ["triage", "rank", "reflect", "chat", "scout", "today", "bench"])
+        body["chat_template_kwargs"] = {"enable_thinking": think}
+        body.update(temperature=0.6 if think else 0.7, top_p=0.95 if think else 0.8, top_k=20, min_p=0)
+        body["max_tokens"] = lc.get("max_tokens", 8192)
     hdr = {"Authorization": f"Bearer {key_of(pdef)}"} if key_of(pdef) else {}
     j = _http(pdef["base_url"].rstrip("/") + "/chat/completions", body, hdr, o["timeout"])
     u = j.get("usage", {})
-    return j["choices"][0]["message"]["content"], {"inp": u.get("prompt_tokens", 0), "outp": u.get("completion_tokens", 0)}
+    text = _THINK.sub("", j["choices"][0]["message"].get("content") or "")  # reasoning stays out of the answer (llama.cpp also returns it separately)
+    return text, {"inp": u.get("prompt_tokens", 0), "outp": u.get("completion_tokens", 0)}
 
 
 def _anthropic_api(prompt, route, o):
@@ -380,7 +392,7 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
     """Returns (text, raw). 'model' is only a legacy hint; routing decides. provider= forces one (used by bench / tests)."""
     need_browser = bool(mcp_config)
     need_web = any(t in allowed_tools for t in WEB_TOOLS)
-    o = dict(allowed_tools=allowed_tools, timeout=timeout, extra_args=extra_args, cwd=cwd, max_turns=max_turns, mcp_config=mcp_config, persist=persist)
+    o = dict(allowed_tools=allowed_tools, timeout=timeout, extra_args=extra_args, cwd=cwd, max_turns=max_turns, mcp_config=mcp_config, persist=persist, kind=kind)
     primary = route_for(kind)
     chain = [primary] if not provider else [dict(primary, provider=provider, model=model or "")]
     # Quality work in the background waits for its own provider (next run) instead of being done badly or timing out on a fallback.

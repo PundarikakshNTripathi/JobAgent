@@ -123,6 +123,12 @@ def cycle():
             os.remove(LOCK)
         except OSError:
             pass
+        try:  # give the GPU back after a scheduled run (the model reloads in ~20 s next time); keep it with llm.local.keep_running
+            import local_ai
+            if local_ai.STARTED and not SETTINGS["llm"].get("local", {}).get("keep_running", False):
+                log("local AI: " + local_ai.stop())
+        except Exception:
+            pass
 
 
 def usage():

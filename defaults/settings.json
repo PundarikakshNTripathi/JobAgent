@@ -134,7 +134,8 @@
       "claude",
       "agy",
       "codex",
-      "gemini"
+      "gemini",
+      "local"
     ],
     "budgets": {},
     "defer_in_background": [
@@ -152,7 +153,21 @@
       "ingest": 168,
       "scout-plan": 24
     },
-    "heavy_call_tokens": 50000
+    "heavy_call_tokens": 50000,
+    "local": {
+      "ctx": 32768,
+      "max_tokens": 8192,
+      "keep_running": false,
+      "thinking_kinds": [
+        "triage",
+        "rank",
+        "reflect",
+        "chat",
+        "scout",
+        "today",
+        "bench"
+      ]
+    }
   },
   "high_stakes": {
     "categories": [

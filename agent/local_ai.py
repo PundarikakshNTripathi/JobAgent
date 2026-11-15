@@ -17,6 +17,7 @@ MODELS = [  # (min VRAM GB on a discrete GPU or unified memory on Apple, hf repo
     (7.5, "unsloth/Qwen3.5-9B-GGUF:Q4_K_M", "Qwen3.5-9B (Q4_K_M)", 5.7),
     (5.0, "unsloth/Qwen3.5-4B-GGUF:Q4_K_M", "Qwen3.5-4B (Q4_K_M)", 2.7),
 ]
+STARTED = []  # servers started by this process (stopped again after a scheduled run unless keep_running)
 LOCAL_KINDS = ["triage", "ingest", "today", "reflect", "scout", "rank", "browse"]
 
 
@@ -130,7 +131,7 @@ def running():
         return False
 
 
-def start(model=None, ctx=16384, wait=900):
+def start(model=None, ctx=None, wait=900):
     """Start llama-server (first start downloads the model, several minutes). Returns True when healthy."""
     if running():
         return True
@@ -138,6 +139,7 @@ def start(model=None, ctx=16384, wait=900):
     if not b:
         raise RuntimeError("llama.cpp is not installed: run `python agent/run.py local-setup`")
     rec = common.SETTINGS.get("llm", {}).get("local", {})
+    ctx = ctx or rec.get("ctx", 32768)
     model = model or rec.get("model") or (recommend() or {}).get("repo")
     if not model:
         raise RuntimeError("no local model fits this machine")
@@ -149,6 +151,7 @@ def start(model=None, ctx=16384, wait=900):
     kw = {"creationflags": 0x08000000} if os.name == "nt" else {"start_new_session": True}
     p = subprocess.Popen(args, stdout=logf, stderr=subprocess.STDOUT, cwd=DIR if os.path.isdir(DIR) else None, **kw)
     common.meta_set(common.db(), "local_ai_pid", str(p.pid))
+    STARTED.append(p.pid)
     t0 = time.time()
     while time.time() - t0 < wait:
         if running():
