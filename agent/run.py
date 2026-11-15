@@ -15,7 +15,7 @@
  SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-times HH:MM [HH:MM]   (default 09:00 18:00)
  MEMORY     reflect               update the agent's memory + scoring tweaks from your outcomes
 Your personal data lives in the workspace (see `doctor`), never in this repository."""
-import datetime as dt, os, re, subprocess, sys, time
+import datetime as dt, json, os, re, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
@@ -170,6 +170,31 @@ def schedule(install=True, minutes=None):
         print(_schtasks("/Delete", "/F", "/TN", TASK))
 
 
+def local_setup(local_ai, assume_yes=False):
+    hw = local_ai.detect()
+    print(f"This computer: {hw['os']} {hw['arch']}, GPU: {hw['gpu'] or 'none'} ({hw['vram_gb']} GB), RAM {hw['ram_gb']} GB, free disk {hw['disk_free_gb']} GB")
+    rec = local_ai.recommend(hw)
+    if not rec:
+        print("No local model fits well here; keep using hosted models. (Needs about 6 GB of VRAM, Apple Silicon with 16 GB, or 16 GB RAM for a slow CPU model.)")
+        return
+    print(f"Recommended: {rec['label']}, about {rec['size_gb']} GB download: {rec['why']}.")
+    print("It would run triage, inbox extraction, JD checks, ranking people, browsing steps, the daily plan and reflection; Claude keeps cover letters, messages and resume advice.")
+    if not assume_yes and input("Download llama.cpp and the model now? [y/N] ").strip().lower() not in ("y", "yes"):
+        print("Skipped. Run `python agent/run.py local-setup` any time.")
+        return
+    common.save_override("settings.json", {"llm": {"local": {"model": rec["repo"], "autostart": True}}})
+    common.reload_config()
+    print("llama-server:", local_ai.install())
+    print("starting (the first start downloads the model; this can take several minutes) ...")
+    if not local_ai.start():
+        print("still loading; run `python agent/run.py local-bench --apply` once it is up")
+        return
+    print("checking quality against your main model on your own jobs ...")
+    res = local_ai.bench(apply=True)
+    print(res)
+    print("Routed to the local model: " + ", ".join(res.get("routed", [])) if res.get("routed") else "Kept your hosted models for now (agreement below the bar); the local model stays available.")
+
+
 def doctor():
     import llm
     print("workspace:", HOME, "(personal data, never committed)")
@@ -224,6 +249,18 @@ def main():
         res = linkedin.scan_list(agentic.company_list(" ".join(a[1:]) or "picks"), limit=SETTINGS.get("connections_max_companies", 15))
         print("=== CONNECTIONS ===")
         print(agentic.connections_text(res))
+    elif cmd in ("local-setup", "local-start", "local-stop", "local-bench", "local-status"):
+        import local_ai
+        if cmd == "local-status":
+            print(json.dumps({"hardware": local_ai.detect(), "recommended": local_ai.recommend(), "installed": local_ai.server_bin(), "running": local_ai.running()}, indent=1))
+        elif cmd == "local-start":
+            print("ready" if local_ai.start() else "still loading; check logs/llama-server.log")
+        elif cmd == "local-stop":
+            print(local_ai.stop())
+        elif cmd == "local-bench":
+            print(local_ai.bench(apply="--apply" in a))
+        else:
+            local_setup(local_ai, assume_yes="--yes" in a)
     elif cmd == "audit":
         import jd
         rows = jd.audit()

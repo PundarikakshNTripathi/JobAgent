@@ -116,6 +116,16 @@ def _fmt(r):
             f"description_excerpt={_excerpt(r['desc'] or '(none in feed; judge by title/company)', SETTINGS.get('triage_desc_chars', 1600))}\n")
 
 
+def triage_prompt(batch):
+    """The triage prompt for a batch of job rows (also used by the local-model agreement benchmark)."""
+    mem = memory.memory_text(1200)
+    return TRIAGE_PROMPT.format(
+        summary=PROFILE["summary"], education=PROFILE["education"], projects=" | ".join(PROFILE["projects"][:4]),
+        experience=" | ".join(PROFILE["experience"]), achievements=" | ".join(PROFILE["achievements"]),
+        variants=json.dumps(PROFILE["resume_variant_guidance"]), persona=memory.persona() + ('\nLEARNED MEMORY (apply it): ' + mem if mem else ''),
+        postings="\n---\n".join(_fmt(r) for r in batch))
+
+
 def triage(max_jobs=None):
     c = db()
     limit = max_jobs or SETTINGS["max_triage_per_cycle"]
@@ -133,10 +143,7 @@ def triage(max_jobs=None):
     bs = SETTINGS["triage_batch_size"]
     for i in range(0, len(rows), bs):
         batch = rows[i:i + bs]
-        prompt = TRIAGE_PROMPT.format(
-            summary=PROFILE["summary"], education=PROFILE["education"], projects=" | ".join(PROFILE["projects"][:4]),
-            experience=" | ".join(PROFILE["experience"]), achievements=" | ".join(PROFILE["achievements"]),
-            variants=json.dumps(PROFILE["resume_variant_guidance"]), persona=memory.persona() + ('\nLEARNED MEMORY (apply it): ' + memory.memory_text(1200) if memory.memory_text(1200) else ''), postings="\n---\n".join(_fmt(r) for r in batch))
+        prompt = triage_prompt(batch)
         try:
             text, _ = run_claude(prompt, kind="triage", timeout=SETTINGS["triage_timeout_s"], max_turns=2)
             res = extract_json(text)

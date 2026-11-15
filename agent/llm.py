@@ -66,6 +66,9 @@ def bg_calls_5h(provider):
     return c.execute("SELECT COUNT(*) FROM llm_log WHERE provider=? AND kind NOT IN ('chat','ingest','test','bench') AND ts>=datetime('now','-5 hours','localtime')", (provider,)).fetchone()[0]
 
 
+_autostart_tried = {}
+
+
 def available(name):
     """(ok, reason). 'ok' means the tool/key exists; it does not prove the login works (use test())."""
     p = registry().get(name)
@@ -86,6 +89,14 @@ def available(name):
             try:
                 socket.create_connection((u.hostname, u.port or 80), 0.4).close()
             except OSError:
+                if name == "local" and p.get("autostart") and common.SETTINGS["llm"].get("local", {}).get("autostart", True) and not _autostart_tried.get(name):
+                    _autostart_tried[name] = True
+                    try:
+                        import local_ai
+                        if local_ai.server_bin() and local_ai.start(wait=240):
+                            return True, p["base_url"]
+                    except Exception as e:
+                        log(f"local AI autostart failed: {e}")
                 return False, "server not running"
         return True, p["base_url"]
     if t == "anthropic_api":
@@ -97,7 +108,7 @@ def available(name):
 
 
 def resolve_auto():
-    for name in ("claude", "agy", "codex", "gemini", "openai", "anthropic", "openrouter", "gemini_api", "ollama"):
+    for name in ("claude", "agy", "codex", "gemini", "openai", "anthropic", "openrouter", "gemini_api", "local", "ollama"):
         if available(name)[0]:
             return name
     raise LLMError("No LLM provider available. Install one (Claude Code, Antigravity, Codex, Gemini CLI) or set an API key; see Settings > Providers.")
