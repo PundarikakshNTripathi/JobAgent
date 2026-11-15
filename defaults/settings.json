@@ -118,6 +118,16 @@
         "provider": "claude",
         "model": "",
         "effort": "medium"
+      },
+      "rank": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
+      },
+      "browse": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
       }
     },
     "fallbacks": [
@@ -200,5 +210,9 @@
   "cycle_minutes_budget": 25,
   "packets_per_cycle": 2,
   "referrals_per_cycle": 1,
-  "visa_checks_per_cycle": 40
+  "visa_checks_per_cycle": 40,
+  "jd_gate": {
+    "max_yoe": 1
+  },
+  "connections_max_companies": 15
 }

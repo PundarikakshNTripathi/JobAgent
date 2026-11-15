@@ -28,6 +28,14 @@ TOOLS (call exactly one per step as JSON {{"tool": name, "args": {{...}}}}; to f
 - inbox_retry {{"id": "all"}}                   re-run inbox items that are waiting for quota or errored
 - picks_list {{}}                               jobs the user chose to work on manually
 - inbox {{"text": "", "context": ""}}           add an opportunity found outside the feeds and process it
+- needs_you_list {{}}                           jobs waiting on the user (forms that need a few fields / blocked fills)
+- linkedin_people {{"company": "", "degree": "1st|2nd"}}   REAL people at a company in the user's LinkedIn network (read-only, logged-in browser; cached 7 days)
+- linkedin_profile {{"url": ""}}                 one person's headline, about, experience (read-only)
+- connections_scan {{"list": "picks|needs-you|<comma-separated companies>"}}   who the user knows at each company (batch, read-only, no model cost)
+- open_page {{"url": ""}}                       read ANY page through the user's logged-in browser (job boards, careers pages, YC Work at a Startup, LinkedIn)
+- find_on_page {{"url": "", "q": ""}}           passages of a page that mention q
+- browse_task {{"goal": "", "url": ""}}         multi-step read-only browsing from url to answer goal (e.g. list open roles on a careers page)
+Browser tools are real: use them whenever the goal involves LinkedIn, YC, a careers page or any site. Report only people/jobs you actually saw, with URLs.
 Rules: never submit an application (the user does); never invent ids; stop as soon as the goal is met; at most {steps} steps.
 
 GOAL: {goal}
@@ -100,7 +108,77 @@ def tool(name, a):
         import inbox
         i = inbox.add(a.get("text", ""), a.get("context", "from agent"))
         return json.dumps(inbox.process(i))[:1500]
+    if name == "needs_you_list":
+        return needs_you_text()
+    if name in ("linkedin_people", "linkedin_profile", "open_page", "find_on_page", "browse_task", "connections_scan"):
+        import browse
+        try:
+            if name == "linkedin_people":
+                ps = browse.linkedin_people(a.get("company", ""), a.get("degree", "1st"))
+                return "\n".join(f"{p['name']} ({p['degree']}) | {p['headline'][:110]} | mutual: {p.get('mutual','')[:60]} | {p['url']}" for p in ps) or "nobody at that company in this degree"
+            if name == "linkedin_profile":
+                return browse.linkedin_profile(a.get("url", ""))[:2500]
+            if name == "open_page":
+                r = browse.open_page(a.get("url", ""), 4000, 30)
+                return f"{r['title']} | {r['url']}\n{r['text']}\nLINKS: " + "; ".join(f"{l['t']} -> {l['h']}" for l in r.get("links", [])[:30])
+            if name == "find_on_page":
+                return "\n---\n".join(browse.find_on_page(a.get("url", ""), a.get("q", ""))) or "not found on the page"
+            if name == "browse_task":
+                return browse.browser_task(a.get("goal", ""), a.get("url", ""))[:3000]
+            if name == "connections_scan":
+                import linkedin
+                return connections_text(linkedin.scan_list(company_list(a.get("list", "picks"))))
+        except browse.BrowseError as e:
+            return f"browser: {e}"
     return f"unknown tool {name}"
+
+
+def needs_you_text():
+    rows = db().execute("""SELECT j.id,j.company,j.title,j.status,p.fill_report FROM jobs j LEFT JOIN packets p ON p.job_id=j.id
+                           WHERE j.active=1 AND j.status LIKE 'fill-%' ORDER BY j.status LIMIT 40""").fetchall()
+    out = []
+    for r in rows:
+        need = ""
+        try:
+            rep = json.loads(r["fill_report"] or "{}")
+            need = "; ".join(str(x) for x in (rep.get("needs_user") or [])[:3])[:200]
+        except ValueError:
+            pass
+        out.append(f"[{r['id']}] {r['company']} | {r['title'][:50]} | {r['status']} | {need}")
+    return "\n".join(out) or "nothing is waiting on you"
+
+
+def company_list(spec):
+    """'picks' / 'needs-you' / 'a, b, c' -> distinct company names."""
+    c = db()
+    spec = (spec or "picks").strip()
+    if spec.lower() in ("picks", "my picks"):
+        rows = c.execute("SELECT j.company FROM picks p JOIN jobs j ON j.id=p.job_id ORDER BY p.ts DESC").fetchall()
+    elif spec.lower().replace(" ", "-") in ("needs-you", "needs", "needsyou"):
+        rows = c.execute("SELECT company FROM jobs WHERE active=1 AND status LIKE 'fill-%'").fetchall()
+    else:
+        return [x.strip() for x in spec.split(",") if x.strip()]
+    seen, out = set(), []
+    for r in rows:
+        k = r[0].lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(r[0])
+    return out
+
+
+def connections_text(res):
+    lines = []
+    for co, ps in res.items():
+        if isinstance(ps, dict):
+            lines.append(f"{co}: could not check ({ps.get('error')})")
+            continue
+        if not ps:
+            lines.append(f"{co}: nobody in your 1st/2nd-degree network works there now")
+            continue
+        lines.append(f"{co}:")
+        lines += [f"  - {p['name']} ({p['degree']}) {p['headline'][:90]}" + (f" | mutual: {p['mutual'][:60]}" if p.get("mutual") and p["degree"] != "1st" else "") + f"\n    {p['url']}" for p in ps]
+    return "\n".join(lines)
 
 
 def loop(goal):

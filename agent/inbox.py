@@ -180,6 +180,8 @@ You DO things by ending your reply with ACTION lines, one per action. The system
   ACTION: packet <target>          cover letter, answers, tailored resume
   ACTION: referral <target>        who to approach + drafted messages (LinkedIn if allowed, else public web)
   ACTION: linkedin <target>        read-only scouting of LinkedIn in the user's logged-in agent browser: real people (names, profile links), 1st/2nd degree, how to approach
+  ACTION: connections <picks | needs-you | company, company>   who the user knows at each company, read from LinkedIn in their logged-in browser (use this for
+                                   "check my connections / who do I know at X / people at my picks"; do NOT hand such requests to the agent loop)
   ACTION: resume <target>          resume tailoring advice
   ACTION: fill <target>            fill the form in the agent browser (never submits); only when the user asked to fill
   ACTION: mark <target> applied|skip|dismissed [reason]     only when the user said so
@@ -199,7 +201,7 @@ RECENT CHAT
 USER: {text}
 JOBAGENT:"""
 
-ALLOWED_ACTIONS = ("packet", "referral", "linkedin", "resume", "fill", "mark", "remember", "ingest", "agent", "retry-inbox", "scout", "today", "poll", "yc-profile")
+ALLOWED_ACTIONS = ("packet", "referral", "linkedin", "connections", "resume", "fill", "mark", "remember", "ingest", "agent", "retry-inbox", "scout", "today", "poll", "yc-profile")
 
 
 def snapshot():

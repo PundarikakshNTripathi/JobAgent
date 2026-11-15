@@ -92,12 +92,40 @@ def style_pack():
     return "\n\n".join(p for p in parts if p)
 
 
-def polish(text, kind="outreach", ctx=""):
-    """Autofix, then (if still flagged and enabled) one rewrite pass by the model. Returns (text, remaining_issues)."""
+def polish_batch(fields, ctx=""):
+    """fields: {key: text}. Deterministic autofix for all; then ONE model rewrite for every field still flagged (instead of one call per field).
+    Returns {key: (text, remaining_issues)}."""
+    out = {k: (autofix(v), []) for k, v in fields.items() if v}
+    out = {k: (t, lint(t)) for k, (t, _) in out.items()}
+    flagged = {k: v for k, v in out.items() if v[1]}
+    cfg = SETTINGS.get("humanize", {})
+    if flagged and cfg.get("enabled", True) and cfg.get("max_rewrites", 1) > 0:
+        from llm import run
+        import json as _j
+        prompt = ("Rewrite each text below so it reads like a real person wrote it. Keep every fact and the same length or shorter. Fix ONLY the listed problems. "
+                  "Rules: plain words, contractions, no flattery, no dashes as punctuation, no lists, no exclamation marks, no stock phrases.\n" + ctx +
+                  "\nReturn ONLY a JSON object mapping each key to its rewritten text.\n\n" +
+                  _j.dumps({k: {"problems": iss, "text": t} for k, (t, iss) in flagged.items()}, ensure_ascii=False))
+        try:
+            new, _ = run(prompt, kind="outreach", timeout=180, max_turns=1)
+            from common import extract_json
+            d = extract_json(new)
+            for k, v in (d.items() if isinstance(d, dict) else []):
+                if k in flagged and isinstance(v, str):
+                    t2 = autofix(v.strip().strip('"'))
+                    if len(lint(t2)) < len(flagged[k][1]):
+                        out[k] = (t2, lint(t2))
+        except Exception as e:
+            log(f"humanize batch rewrite skipped: {e}")
+    return out
+
+
+def polish(text, kind="outreach", ctx="", rewrite=True):
+    """Autofix, then (if still flagged, enabled and rewrite=True) one rewrite pass by the model. Returns (text, remaining_issues)."""
     t = autofix(text)
     issues = lint(t)
     cfg = SETTINGS.get("humanize", {})
-    if issues and cfg.get("enabled", True) and cfg.get("max_rewrites", 1) > 0:
+    if rewrite and issues and cfg.get("enabled", True) and cfg.get("max_rewrites", 1) > 0:
         from llm import run
         prompt = ("Rewrite the text below so it reads like a real person wrote it. Keep every fact and the same length or shorter. Fix ONLY these problems: " + "; ".join(issues) +
                   ".\nRules: plain words, contractions, no flattery, no dashes as punctuation, no lists, no exclamation marks, no stock phrases. Output ONLY the rewritten text.\n"

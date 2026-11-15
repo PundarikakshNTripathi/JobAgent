@@ -50,15 +50,23 @@ def draft(job, targets, fit=""):
     except ValueError:
         log("outreach: could not parse model output")
         return []
+    if isinstance(items, dict):  # a single message object, {"messages": [...]}, or {"Name": {...}}
+        lst = next((v for v in items.values() if isinstance(v, list)), None)
+        items = lst if lst is not None else ([items] if "name" in items else [dict(v, name=k) for k, v in items.items() if isinstance(v, dict)])
+    items = [it for it in (items if isinstance(items, list) else []) if isinstance(it, dict)]
+    FIELDS = ("connect_note", "dm_short", "dm_long", "followup", "ask_mutual", "blurb")
+    fixed = humanize.polish_batch({f"{i}:{f}": it.get(f, "") for i, it in enumerate(items) for f in FIELDS}, ctx="These are LinkedIn messages from a student.")
     out = []
-    for it in items if isinstance(items, list) else []:
+    for i, it in enumerate(items):
         warn = []
-        for f in ("connect_note", "dm_short", "dm_long", "followup", "ask_mutual", "blurb"):
-            if it.get(f):
-                it[f], issues = humanize.polish(it[f], "outreach", ctx=f"Field: {f}.")
-                warn += [f"{f}: {i}" for i in issues]
+        for f in FIELDS:
+            if f"{i}:{f}" in fixed:
+                it[f], issues = fixed[f"{i}:{f}"]
+                warn += [f"{f}: {x}" for x in issues]
         if len(it.get("connect_note", "")) > 280:
             it["connect_note"] = it["connect_note"][:277].rsplit(" ", 1)[0] + "..."
         it["_style_warnings"] = warn
         out.append(it)
+    if not out:
+        log(f"outreach: no messages parsed (model returned {len(text)} chars)")
     return out

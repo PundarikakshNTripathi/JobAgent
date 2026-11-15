@@ -169,11 +169,22 @@ def doctor():
         print(f"provider {n:10} {'ready' if ok else 'not ready':9} {'' if ok else why}  {'(verified adapter)' if p.get('verified') else '(adapter follows vendor docs; test it)'}")
     print("routing  :", {k: v.get("provider") + ":" + (v.get("model") or "default") for k, v in SETTINGS["llm"]["routing"].items()})
     chrome = [p for p in (r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe") if os.path.exists(p)]
-    print("browser  :", chrome[0] if chrome else "no Chrome/Edge found (needed only for form filling / LinkedIn)")
+    print("browser  :", chrome[0] if chrome else "no Chrome/Edge/Chromium found")
+    try:
+        import browse
+        ok, why = browse.available()
+    except Exception as e:
+        ok, why = False, str(e)
+    print("browsing :", ("OK " if ok else "NOT READY: ") + why + ("" if ok else "  (required: LinkedIn, YC, job boards, form filling)"))
     print("schedule :", _schtasks("/Query", "/TN", TASK, "/FO", "LIST").splitlines()[:6] if os.name == "nt" else "n/a")
 
 
 def main():
+    for s in (sys.stdout, sys.stderr):  # names and posts contain emoji/non-Latin text; never crash on a Windows console code page
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     a = sys.argv[1:]
     force = "--force" in a  # you insist on a job the eligibility gate rejected
     a = [x for x in a if x != "--force"]
@@ -197,6 +208,11 @@ def main():
         import referrals
         # you asked for this one by hand: the background LinkedIn cap does not apply; `linkedin` insists on LinkedIn and warns loudly if it could not run
         print(referrals.plan_referral(a[1], manual=True, require_linkedin=(cmd == "linkedin"), force=force))
+    elif cmd == "connections":
+        import agentic, linkedin
+        res = linkedin.scan_list(agentic.company_list(" ".join(a[1:]) or "picks"), limit=SETTINGS.get("connections_max_companies", 15))
+        print("=== CONNECTIONS ===")
+        print(agentic.connections_text(res))
     elif cmd == "audit":
         import jd
         rows = jd.audit()

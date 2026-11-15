@@ -281,7 +281,10 @@ def extract_json(text):
     m = re.search(r"```(?:json)?\s*(.*?)```", t, re.S)
     if m:
         t = m.group(1).strip()
-    for opener, closer in (("{", "}"), ("[", "]")):
+    pairs = [("{", "}"), ("[", "]")]
+    if -1 < t.find("[") < (t.find("{") if t.find("{") != -1 else 10 ** 9):
+        pairs.reverse()  # a top-level array must not be mistaken for its first element
+    for opener, closer in pairs:
         i = t.find(opener)
         j = t.rfind(closer)
         if i != -1 and j > i:

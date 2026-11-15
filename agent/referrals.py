@@ -107,7 +107,8 @@ Return ONLY JSON:
 "targets":[{{"name":"","role":"","why_them":"","evidence":"what you found on the web about their work, with URLs","profile_url":"","how_to_reach":"LinkedIn connection note / email / X DM / GitHub issue etc.",
 "connection_note":"<=280 chars","dm":"<=90 words","followup":"send after 4-5 days if no reply","blurb_for_referrer":"short paragraph"}}],
 "before_you_message":["2-4 concrete prep actions, e.g. read paper X, star/contribute to repo Y, post Z"],
-"timing":"when to ask relative to applying (before/after) per what you found about this company's referral process; mark UNVERIFIED if unsure"}}
+"timing":"apply and ask in parallel; one follow-up after 5-7 days (add a company-specific note only if a source you read states it)"}}
+Only include people you found on a page you actually read, with that page's URL as profile_url; leave anything you could not confirm out entirely (no guesses, no 'unverified' entries).
 """
 
 
@@ -144,11 +145,11 @@ def plan_referral(job_id, manual=False, require_linkedin=False, force=False):
             import linkedin
             r = linkedin.scout_people(job, hits)
             if not (r.get("targets") or []):
-                li_note = "LinkedIn was searched but no usable people were found (" + str(r.get("notes") or r.get("degree_searched") or "no detail") + "). Public-web research was added below."
+                li_note = "LinkedIn was searched: " + str(r.get("notes") or "nobody suitable among your 1st/2nd-degree connections there") + ". Below are people found on public pages instead (each one checked)."
             else:
                 return _write(c, job, tri, pk, r, len(hits), "linkedin")
         except Exception as e:
-            li_note = "LinkedIn scouting FAILED, so this is public-web research only, not a LinkedIn result: " + str(e)[:400]
+            li_note = "LinkedIn scouting could not run (" + str(e)[:300] + "). Below are people found on public pages instead (each one checked)."
             log(f"linkedin scout failed ({e}); falling back to public-web referral research")
     if li_note:
         log("referral: " + li_note)
@@ -163,26 +164,80 @@ def plan_referral(job_id, manual=False, require_linkedin=False, force=False):
     return _write(c, job, tri, pk, r, len(hits), "web")
 
 
+def _verify(job, r, how):
+    """Keep only targets that can be reached and were actually seen: a profile URL is required, and people found on the public web must appear (name and
+    company) on that page when it is read. Scrubs 'unverified' wording. Returns r with r['_dropped'] = how many were removed."""
+    import web
+    keep, dropped = [], 0
+    comp = re.sub(r"\(.*?\)", "", job["company"]).strip().split()[0].lower()
+    for t in r.get("targets", []) or []:
+        url = (t.get("profile_url") or "").strip()
+        name = (t.get("name") or "").strip()
+        if not url.startswith("http") or not name or re.search(r"unverified|unknown|n/?a", name, re.I):
+            dropped += 1
+            continue
+        if how == "web":
+            try:
+                if "linkedin.com/" in url:
+                    import browse
+                    page = browse.page_text(url, 6000)
+                else:
+                    page = web.fetch_text(url, 12000)[1]
+            except Exception:
+                page = ""
+            last = name.split()[-1].lower()
+            if not page or last not in page.lower() or comp not in page.lower():
+                dropped += 1
+                continue
+        for k, v in list(t.items()):
+            if isinstance(v, str):
+                t[k] = re.sub(r"\s*\(?\bunverified\b\)?:?", "", v, flags=re.I).strip()
+        keep.append(t)
+    r["targets"] = keep[:4]
+    r["timing"] = re.sub(r"\s*\(?\bunverified\b\)?:?", "", r.get("timing", "") or "", flags=re.I).strip() or "Apply and message in parallel; one follow-up after 5-7 days."
+    r["_dropped"] = dropped
+    return r
+
+
 def _write(c, job, tri, pk, r, nhits, how):
-    out = [f"# Referral plan: {job['company']} - {job['title']}", job["url"]]
-    if r.get("_note"):
-        out += ["", "> NOTE: " + r["_note"]]
-    out += ["", "## Strategy", r.get("strategy", ""), "", "## Timing", r.get("timing", ""), "", "## Do first"]
-    out += [f"- {x}" for x in r.get("before_you_message", [])]
-    for i, t in enumerate(r.get("targets", []), 1):
-        out += ["", f"## Target {i}: {t.get('name')} ({t.get('role') or t.get('headline')})", f"Why: {t.get('why_them') or t.get('why_likely_to_respond')}", f"Evidence: {t.get('evidence')}", f"Profile: {t.get('profile_url')}",
-                f"Reach via: {t.get('how_to_reach') or ('LinkedIn (' + str(t.get('degree','')) + ' degree)')}", f"Likely to respond because: {t.get('why_likely_to_respond','')}", f"Mutual: {t.get('mutual','')}", "", "**Connection note**", t.get("connection_note", ""), "", "**DM (short)**", t.get("dm", ""), "", "**DM (longer option)**", t.get("dm_long", ""), "", "**Follow-up (+5-7 days, only once)**",
-                t.get("followup", ""), "", "**If 2nd degree: ask a mutual connection to introduce you**", t.get("intro_ask_for_mutual", ""), "", "**Blurb they can forward**", t.get("blurb_for_referrer", "")]
-    try:
+    r = _verify(job, r, how)
+    if not r["targets"]:
+        r["_note"] = ((r.get("_note") or "") + " No reachable person could be confirmed for this job. Run /connections " + job["company"] +
+                      " to look again through LinkedIn, or drop your LinkedIn connections export into the workspace data folder.").strip()
+    try:  # messages first, so they are in the file (they were drafted after the file text was built before)
         msgs = outreach.draft(job, r.get("targets", []), fit=(tri["reason"] if tri else ""))
-        by = {(m.get("name") or "").strip().lower(): m for m in msgs}
-        for t in r.get("targets", []):
-            m = by.get((t.get("name") or "").strip().lower())
+        key = lambda n: re.sub(r"[^a-z ]", "", (n or "").lower()).split()
+
+        def find(name, i):  # tolerant: exact, then same first+last word, then same position
+            k = key(name)
+            for m in msgs:
+                mk = key(m.get("name"))
+                if mk == k or (k and mk and k[0] == mk[0] and k[-1] == mk[-1]):
+                    return m
+            return msgs[i] if len(msgs) == len(r.get("targets", [])) else None
+        for i, t in enumerate(r.get("targets", [])):
+            m = find(t.get("name"), i)
             if m:
                 t.update(connection_note=m.get("connect_note", ""), dm=m.get("dm_short", ""), dm_long=m.get("dm_long", ""), followup=m.get("followup", ""),
                          intro_ask_for_mutual=m.get("ask_mutual", ""), blurb_for_referrer=m.get("blurb", ""), style_warnings=m.get("_style_warnings", []))
     except Exception as e:
         log(f"outreach drafting failed: {e}")
+    out = [f"# Referral plan: {job['company']} - {job['title']}", job["url"]]
+    if r.get("_note"):
+        out += ["", "> NOTE: " + r["_note"]]
+    out += ["", "## Strategy", r.get("strategy", ""), "", "## Timing", r.get("timing", ""), "", "## Do first"]
+    out += [f"- {x}" for x in r.get("before_you_message", [])]
+    sec = lambda title, body: ["", f"**{title}**", body] if (body or "").strip() else []
+    for i, t in enumerate(r.get("targets", []), 1):
+        why = t.get("why_them") or t.get("why_likely_to_respond") or ""
+        out += ["", f"## Target {i}: {t.get('name')} ({t.get('role') or t.get('headline') or ''})", f"Profile: {t.get('profile_url')}",
+                f"Reach via: {t.get('how_to_reach') or ('LinkedIn (' + str(t.get('degree', '')) + ' degree)')}"]
+        out += [f"Mutual: {t['mutual']}"] if t.get("mutual") else []
+        out += [f"Why them: {why}", f"Evidence: {t.get('evidence') or ''}"]
+        out += sec("Connection note (only if you are not connected yet)", t.get("connection_note"))
+        out += sec("Message (short)", t.get("dm")) + sec("Message (longer option)", t.get("dm_long"))
+        out += sec("Ask the mutual connection for an intro", t.get("intro_ask_for_mutual"))
+        out += sec("Follow-up (once, after 5-7 days)", t.get("followup")) + sec("Blurb they can forward", t.get("blurb_for_referrer"))
     d = pk["dir"] if pk else packets.packet_dir(job)
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, "REFERRAL.md")

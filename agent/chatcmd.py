@@ -19,6 +19,8 @@ COMMANDS = [
     ("jobs", "/jobs <words>", "Search the job board by company/title words, e.g. /jobs datadog applied science.", "Find"),
     ("picks", "/picks", "Your picks and how far each one is (packet / referral / resume / fill).", "Find"),
     ("watch", "/watch", "High-stakes roles on your watchlist.", "Find"),
+    ("needs", "/needs", "Jobs waiting on you: forms that need a few fields, or employers that need you to sign in.", "Find"),
+    ("connections", "/connections <picks | needs-you | company, company…>", "Who you know at each company: reads LinkedIn in your logged-in browser (1st degree, then 2nd with mutuals). No model cost.", "Prepare"),
     ("packet", "/packet <id or words>", "Prepare the application packet: cover letter, answers, tailored resume.", "Prepare"),
     ("referral", "/referral <id or words>", "Plan who to approach and draft the messages (uses LinkedIn when allowed, else the public web; says which).", "Prepare"),
     ("linkedin", "/linkedin <id or words>", "Scout LinkedIn read-only through your logged-in agent Chrome: 1st then 2nd degree, who is likely to answer, how to approach.", "Prepare"),
@@ -41,7 +43,7 @@ CMD = {c[0]: c for c in COMMANDS}
 JOB_CMDS = ("packet", "referral", "linkedin", "resume", "fill")
 PLAIN = ("scout", "today", "poll", "cycle", "yc-profile", "reflect")
 # what natural-language chat may start by itself; these never change a job's status and never submit anything
-NL_AUTO = JOB_CMDS[:4] + PLAIN[:3] + ("yc-profile", "retry", "remember", "ingest")
+NL_AUTO = JOB_CMDS[:4] + PLAIN[:3] + ("yc-profile", "retry", "remember", "ingest", "connections")
 NL_NEEDS_WORDS = {"fill": r"\bfill|auto-?fill", "mark": r"\b(mark|applied|skip|dismiss|ignore|reject)", "agent": r"\bagent|work on|figure out|research|find out|do this|take care"}
 
 
@@ -194,6 +196,9 @@ def summarize(cmd, arg, rc, out):
         return f"Resume advice for {label} is ready in My picks."
     if cmd == "fill" and job:
         return f"Form for {label} filled in the agent browser. NOT submitted: review it and press Submit yourself.\n{_tail_text(out, 4)}"
+    if cmd == "connections":
+        body = out.split("=== CONNECTIONS ===", 1)[-1].strip() if "=== CONNECTIONS ===" in out else _tail_text(out, 60, 3500)
+        return f"Who you know (LinkedIn, read-only):\n{body[:6000]}\n\nAsk /linkedin <job> for a full plan with messages for any of these."
     if cmd in ("agent", "yc-profile", "reflect", "today", "scout", "poll", "cycle", "retry"):
         return f"{cmd} finished.\n{_tail_text(out, 14, 2200)}"
     return f"{cmd} finished.\n{_tail_text(out, 6)}"
@@ -285,6 +290,16 @@ def execute(cmd, rest="", source="slash"):
         return cmd_picks()
     if cmd == "watch":
         return cmd_watch()
+    if cmd == "needs":
+        import agentic
+        return agentic.needs_you_text()
+    if cmd == "connections":
+        import agentic
+        cos = agentic.company_list(rest or "picks")
+        if not cos:
+            return "No companies in that list."
+        return (f"Checking your LinkedIn network at {len(cos[:15])} companies ({', '.join(cos[:15])}{'…' if len(cos) > 15 else ''}). Read-only, paced like a person; "
+                f"about 15-30 s per company. I will post who you know at each.\n" + launch("connections", rest or "picks"))
     if cmd == "inbox":
         import inbox
         return inbox.summary() or "Inbox is empty."

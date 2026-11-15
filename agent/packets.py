@@ -109,13 +109,13 @@ def build_packet(job_id, force=False):
                          timeout=SETTINGS["packet_timeout_s"], max_turns=14)
     p = extract_json(text)
     style_warn = []
-    if p.get("cover_letter"):
-        p["cover_letter"], w = humanize.polish(p["cover_letter"], "cover letter")
-        style_warn += [f"cover letter: {x}" for x in w]
-    for k, v in list((p.get("answers") or {}).items()):
-        if v:
-            p["answers"][k], w = humanize.polish(v, "answer")
-            style_warn += [f"{k}: {x}" for x in w]
+    fields = {"cover_letter": p.get("cover_letter") or ""} | {f"a:{k}": v for k, v in (p.get("answers") or {}).items() if isinstance(v, str) and v}
+    for key, (txt, w) in humanize.polish_batch(fields, ctx="A cover letter and job-application answers written by a student.").items():  # one rewrite call at most
+        if key == "cover_letter":
+            p["cover_letter"] = txt
+        else:
+            p["answers"][key[2:]] = txt
+        style_warn += [f"{key.replace('a:', '')}: {x}" for x in w]
     p["style_warnings"] = style_warn
     if p.get("resume") not in PROFILE["resume_variants"]:
         p["resume"] = (tri["resume"] if tri else "AI_Engineer")
