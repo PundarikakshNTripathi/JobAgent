@@ -148,8 +148,39 @@ def _log_usage(kind, provider, model, u, secs):
                   (now(), kind, model or "default", u.get("inp", 0), u.get("cache_create", 0), u.get("cache_read", 0), u.get("outp", 0),
                    _cost(model, u.get("inp", 0) + u.get("cache_create", 0), u.get("outp", 0), u.get("cost")), provider, round(secs, 2)))
         c.commit()
+        tin = u.get("inp", 0) + u.get("cache_create", 0) + u.get("cache_read", 0)
+        if tin > common.SETTINGS["llm"].get("heavy_call_tokens", 50000):
+            log(f"llm: heavy call: {kind} via {provider} read {tin} input tokens")
     except Exception as e:
         log(f"usage log failed: {e}")
+
+
+# ------------------------------------------------------------------ response cache (deterministic tasks only)
+def _cache_key(kind, route, prompt):
+    import hashlib
+    return hashlib.sha256(f"{kind}|{route.get('provider')}|{route.get('model')}|{prompt}".encode("utf-8", "replace")).hexdigest()
+
+
+def cache_get(kind, route, prompt):
+    hours = common.SETTINGS["llm"].get("cache_hours", {}).get(kind)
+    if not hours:
+        return None
+    try:
+        r = db().execute("SELECT text, at FROM llm_cache WHERE k=?", (_cache_key(kind, route, prompt),)).fetchone()
+        return r["text"] if r and time.time() - r["at"] < hours * 3600 else None
+    except Exception:
+        return None
+
+
+def cache_put(kind, route, prompt, text):
+    if not common.SETTINGS["llm"].get("cache_hours", {}).get(kind):
+        return
+    try:
+        c = db()
+        c.execute("INSERT OR REPLACE INTO llm_cache(k,kind,text,at) VALUES(?,?,?,?)", (_cache_key(kind, route, prompt), kind, text, time.time()))
+        c.commit()
+    except Exception as e:
+        log(f"llm cache write failed: {e}")
 
 
 # ------------------------------------------------------------------ adapters: each returns (text, usage_dict)
@@ -341,9 +372,16 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
     o = dict(allowed_tools=allowed_tools, timeout=timeout, extra_args=extra_args, cwd=cwd, max_turns=max_turns, mcp_config=mcp_config, persist=persist)
     primary = route_for(kind)
     chain = [primary] if not provider else [dict(primary, provider=provider, model=model or "")]
+    # Quality work in the background waits for its own provider (next run) instead of being done badly or timing out on a fallback.
+    defer = common.BACKGROUND and not provider and kind in common.SETTINGS["llm"].get("defer_in_background", [])
     for fb in common.SETTINGS["llm"].get("fallbacks", []):
-        if not provider and fb != primary["provider"]:
+        if not provider and not defer and fb != primary["provider"]:
             chain.append({"provider": fb, "model": "", "effort": primary.get("effort", "medium")})
+    cacheable = not mcp_config and not need_web
+    if cacheable:
+        hit = cache_get(kind, primary, prompt)
+        if hit is not None:
+            return hit, {"provider": primary["provider"], "usage": {}, "cached": True}
     errors = []
     for route in chain:
         name = route["provider"]
@@ -377,9 +415,13 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
                 _set_cooldown(name, str(e))
             continue
         _log_usage(kind, name, route.get("model"), usage, time.time() - t0)
+        if cacheable and name == primary["provider"]:
+            cache_put(kind, primary, prompt, text)
         if name != primary["provider"] and not provider:
             log(f"llm {kind}: fell back to {name}")
         return text, {"provider": name, "usage": usage}
+    if defer:
+        raise LLMError("deferred to the next run (its provider is busy or out of quota; background quality work does not fall back): " + "; ".join(errors))
     raise LLMError("all providers failed for '%s': %s" % (kind, "; ".join(errors)))
 
 

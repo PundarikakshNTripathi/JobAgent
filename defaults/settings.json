@@ -136,7 +136,23 @@
       "codex",
       "gemini"
     ],
-    "budgets": {}
+    "budgets": {},
+    "defer_in_background": [
+      "packet",
+      "outreach",
+      "resume",
+      "fill",
+      "linkedin",
+      "rank"
+    ],
+    "cache_hours": {
+      "triage": 720,
+      "rank": 72,
+      "browse": 12,
+      "ingest": 168,
+      "scout-plan": 24
+    },
+    "heavy_call_tokens": 50000
   },
   "high_stakes": {
     "categories": [

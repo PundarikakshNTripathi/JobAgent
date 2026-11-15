@@ -11,7 +11,9 @@ from llm import run
 SYSTEM = """You are JobAgent's autonomous operator for ONE user. Achieve the GOAL using the tools below, one tool per step. Be economical: prefer reading state before spending model calls or browser time.
 {ctx}
 
-TOOLS (call exactly one per step as JSON {{"tool": name, "args": {{...}}}}; to finish return {{"final": "plain-language report of what you did and found"}}):
+TOOLS (call exactly one per step as JSON {{"tool": name, "args": {{...}}, "note": "what the previous result told you that matters"}}; on your FIRST step also add
+"plan": "the 2-5 tool calls you intend"; to finish return {{"final": "plain-language report of what you did and found"}}):
+- recall {{"q": "", "kinds": "job,referral,person,fact,memory,chat"}}   search everything already known (jobs + JD eligibility, plans, people seen, facts); cheapest tool
 - status {{}}                                   counts by pipeline stage and today's usage
 - top {{"n": 15}}                               best current matches with ids
 - query_jobs {{"verdict": "APPLY|STRETCH|SKIP", "loc_class": "india|remote|relocate", "status": "", "has_referral": true|false, "limit": 10}}   structured filter (all keys optional); PREFER this for any "best / which / missing" question
@@ -110,6 +112,10 @@ def tool(name, a):
         return json.dumps(inbox.process(i))[:1500]
     if name == "needs_you_list":
         return needs_you_text()
+    if name == "recall":
+        import rag
+        kinds = [k.strip() for k in str(a.get("kinds", "")).split(",") if k.strip()] or None
+        return rag.context(a.get("q", ""), k=10, kinds=kinds, max_chars=3500) or "nothing relevant stored"
     if name in ("linkedin_people", "linkedin_profile", "open_page", "find_on_page", "browse_task", "connections_scan"):
         import browse
         try:
@@ -181,17 +187,38 @@ def connections_text(res):
     return "\n".join(lines)
 
 
+def _fold(steps, raw_last=3500, folded=350):
+    """Context folding: the latest tool result stays verbatim, earlier ones shrink to their head (plus the model's own note), so long browsing or
+    search sessions don't grow the prompt step after step."""
+    out = []
+    for j, (head, note, res) in enumerate(steps):
+        last = j == len(steps) - 1
+        body = res[:raw_last] if last else (res[:folded] + (" …(folded)" if len(res) > folded else ""))
+        out.append(f"{head}\n{'NOTE: ' + note if note else ''}\nRESULT: {body}".replace("\n\nRESULT", "\nRESULT"))
+    return "\n".join(out)
+
+
 def loop(goal):
     steps = SETTINGS.get("agent_mode", {}).get("max_steps", 12)
-    transcript, final = [], None
+    hist, final, plan = [], None, ""
+    try:
+        import rag
+        rag.refresh()
+        known = rag.context(goal, k=8, max_chars=2500)
+    except Exception:
+        known = ""
+    ctx = memory.context_pack() + ("\nRETRIEVED FOR THIS GOAL:\n" + known if known else "")
     for i in range(1, steps + 1):
-        prompt = SYSTEM.format(ctx=memory.context_pack(), steps=steps, goal=goal, transcript="\n".join(transcript)[-9000:] or "(nothing yet)")
+        tr = (f"PLAN: {plan}\n" if plan else "") + (_fold(hist) or "(nothing yet)")
+        prompt = SYSTEM.format(ctx=ctx, steps=steps, goal=goal, transcript=tr[-12000:])  # stable prefix first (system, profile, tools), volatile parts last
         text, _ = run(prompt, kind="chat", timeout=240, max_turns=1)
         try:
             d = extract_json(text)
         except ValueError:
-            transcript.append(f"STEP {i}: (unparseable reply, ignored)")
+            hist.append((f"STEP {i}: (unparseable reply, ignored)", "", ""))
             continue
+        if d.get("plan") and not plan:
+            plan = str(d["plan"])[:600]
         if "final" in d:
             final = d["final"]
             break
@@ -201,5 +228,5 @@ def loop(goal):
         except Exception as e:
             out = f"tool error: {e}"
         log(f"agent step {i}: {name} {json.dumps(args)[:80]}")
-        transcript.append(f"STEP {i}: {name} {json.dumps(args)[:200]}\nRESULT: {str(out)[:1500]}")
-    return final or "Stopped at the step limit. Progress:\n" + "\n".join(transcript[-4:])
+        hist.append((f"STEP {i}: {name} {json.dumps(args)[:200]}", str(d.get("note", ""))[:300], str(out)))
+    return final or "Stopped at the step limit. Progress:\n" + _fold(hist[-4:])

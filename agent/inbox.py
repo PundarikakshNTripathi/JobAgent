@@ -195,6 +195,9 @@ For read-only questions (top matches, status, what is in the inbox) just answer 
 PIPELINE SNAPSHOT
 {snapshot}
 
+RETRIEVED FOR THIS MESSAGE (jobs, plans, people seen on LinkedIn, profile facts, memory; use these ids and facts)
+{retrieved}
+
 RECENT CHAT
 {history}
 
@@ -230,7 +233,13 @@ def reply(text):
         return answer, []
     hist = "\n".join(f"{r['role'].upper()}: {r['text'][:600]}" for r in reversed(c.execute("SELECT role,text FROM chat WHERE role!='proposal' ORDER BY id DESC LIMIT 7").fetchall()[1:]))
     try:
-        out, _ = run(CHAT.format(ctx=memory.context_pack(), snapshot=snapshot(), history=hist or "(start)", text=text), kind="chat", timeout=240, max_turns=2)
+        try:
+            import rag
+            rag.refresh()
+            retrieved = rag.context(text, k=10, max_chars=3500) or "(nothing specific)"
+        except Exception as e:
+            retrieved = f"(retrieval unavailable: {e})"
+        out, _ = run(CHAT.format(ctx=memory.context_pack(), snapshot=snapshot(), retrieved=retrieved, history=hist or "(start)", text=text), kind="chat", timeout=240, max_turns=2)
     except Exception as e:
         answer = f"I cannot think right now ({str(e)[:220]}). Slash commands still work without a model, e.g. /top, /jobs datadog, /packet <id>, /linkedin <id>, /usage. Type /help."
         c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "agent", answer))
