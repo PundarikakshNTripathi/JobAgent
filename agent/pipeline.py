@@ -6,6 +6,41 @@ from common import (db, log, now, notify, meta_get, meta_set, run_claude, extrac
 
 
 # ------------------------------------------------------------------ poll
+AGGREGATORS = ("speedyapply", "getro", "hnwh", "simplify", "github", "newgrad", "remoteok", "wwr", "manual")
+
+
+def dedupe():
+    """The same posting often arrives twice (an aggregator copy of an ATS posting, or one role posted under several requisition ids with the same text).
+    Keep one per company+title+location: the one you worked on, else the direct ATS posting, else the fully-read one; hide the rest (active=0, status
+    'duplicate'). Different texts under the same title are kept (different teams). Returns how many were hidden."""
+    c = db()
+    norm = lambda s: re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+    groups = {}
+    for r in c.execute("""SELECT j.id, j.company, j.title, j.location, j.desc, COALESCE(j.jd_full,0) jf, j.score,
+                                 (EXISTS(SELECT 1 FROM picks p WHERE p.job_id=j.id) OR EXISTS(SELECT 1 FROM packets k WHERE k.job_id=j.id)
+                                  OR EXISTS(SELECT 1 FROM referrals f WHERE f.job_id=j.id) OR j.status IN ('applied','ready','watch')) mine
+                          FROM jobs j WHERE j.active=1""").fetchall():
+        groups.setdefault((norm(r["company"]), norm(r["title"]), norm(r["location"])[:24]), []).append(r)
+    hidden = 0
+    for rows in groups.values():
+        if len(rows) < 2:
+            continue
+        agg = lambda r: r["id"].split(":")[0] in AGGREGATORS
+        rows.sort(key=lambda r: (-r["mine"], agg(r), -r["jf"], -(r["score"] or 0)))
+        keep = rows[0]
+        kd = norm(keep["desc"])[:600]
+        for r in rows[1:]:
+            if r["mine"]:
+                continue
+            if agg(r) or not kd or norm(r["desc"])[:600] == kd:
+                c.execute("UPDATE jobs SET active=0, status='duplicate' WHERE id=?", (r["id"],))
+                hidden += 1
+    c.commit()
+    if hidden:
+        log(f"dedupe: hid {hidden} duplicate postings")
+    return hidden
+
+
 def poll():
     """Fetch every source, upsert jobs, return list of ids that are new AND pass the heuristic bar."""
     c = db()
@@ -52,6 +87,12 @@ def poll():
     meta_set(c, "last_poll", ts)
     if bad:
         log(f"WARNING failing sources: {list(bad)[:12]}")
+    try:
+        dedupe()
+        live = {r[0] for r in c.execute("SELECT id FROM jobs WHERE active=1")}
+        new_ids = [i for i in new_ids if i in live]  # no alerts or triage for duplicate copies
+    except Exception as e:
+        log(f"dedupe failed: {e}")
     return new_ids, first_run
 
 

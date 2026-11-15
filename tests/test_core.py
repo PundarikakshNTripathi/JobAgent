@@ -134,6 +134,20 @@ class Retrieval(unittest.TestCase):
         self.assertEqual(rag.refresh(), 0)  # incremental: nothing changed
 
 
+class Dedupe(unittest.TestCase):
+    def test_keeps_direct_and_different_text(self):
+        import pipeline
+        _env.add_job("greenhouse:dup:1", "DupCo", "ML Engineer", "Same text " * 50, location="Bengaluru")
+        _env.add_job("speedyapply-ai:dup", "DupCo", "ML Engineer", "aggregator copy", location="Bengaluru")
+        _env.add_job("greenhouse:dup:2", "DupCo", "ML Engineer", "Same text " * 50, location="Bengaluru")
+        _env.add_job("greenhouse:dup:3", "DupCo", "ML Engineer", "A different team entirely " * 30, location="Bengaluru")
+        pipeline.dedupe()
+        act = {r[0]: r[1] for r in common.db().execute("SELECT id, active FROM jobs WHERE company='DupCo'")}
+        self.assertEqual(act["speedyapply-ai:dup"], 0)
+        self.assertEqual(act["greenhouse:dup:3"], 1)
+        self.assertEqual(act["greenhouse:dup:1"] + act["greenhouse:dup:2"], 1)
+
+
 class Schedule(unittest.TestCase):
     def test_times_validation(self):
         common.SETTINGS["schedule_times"] = ["09:00", "25:00", "18:30", "bad"]
