@@ -55,7 +55,11 @@ def draft(job, targets, fit=""):
         items = lst if lst is not None else ([items] if "name" in items else [dict(v, name=k) for k, v in items.items() if isinstance(v, dict)])
     items = [it for it in (items if isinstance(items, list) else []) if isinstance(it, dict)]
     FIELDS = ("connect_note", "dm_short", "dm_long", "followup", "ask_mutual", "blurb")
-    fixed = humanize.polish_batch({f"{i}:{f}": it.get(f, "") for i, it in enumerate(items) for f in FIELDS}, ctx="These are LinkedIn messages from a student.")
+    import grounding
+    src = [facts(), people, job["company"], job["title"], job["location"] or "", fit]
+    extra = {f"{i}:{f}": [f"unsupported figure '{n}': remove it or use a number from the profile" for n in grounding.unsupported_numbers(it.get(f, ""), src)]
+             for i, it in enumerate(items) for f in FIELDS}
+    fixed = humanize.polish_batch({f"{i}:{f}": it.get(f, "") for i, it in enumerate(items) for f in FIELDS}, ctx="These are LinkedIn messages from a student.", extra=extra)
     out = []
     for i, it in enumerate(items):
         warn = []

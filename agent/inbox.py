@@ -253,6 +253,8 @@ def reply(text):
         else:
             body.append(ln)
     answer = "\n".join(body).strip()
+    import grounding
+    answer, _ = grounding.strip_unseen_urls(answer, "\n".join([snapshot(), retrieved, hist, text]))
     done, props = chatcmd.execute_nl_actions(text, actions[:4])
     if done:
         answer += "\n\nStarted:\n" + "\n".join("- " + d for d in done)

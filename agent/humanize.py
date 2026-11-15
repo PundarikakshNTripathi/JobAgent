@@ -92,11 +92,11 @@ def style_pack():
     return "\n\n".join(p for p in parts if p)
 
 
-def polish_batch(fields, ctx=""):
+def polish_batch(fields, ctx="", extra=None):
     """fields: {key: text}. Deterministic autofix for all; then ONE model rewrite for every field still flagged (instead of one call per field).
     Returns {key: (text, remaining_issues)}."""
     out = {k: (autofix(v), []) for k, v in fields.items() if v}
-    out = {k: (t, lint(t)) for k, (t, _) in out.items()}
+    out = {k: (t, lint(t) + list((extra or {}).get(k, []))) for k, (t, _) in out.items()}
     flagged = {k: v for k, v in out.items() if v[1]}
     cfg = SETTINGS.get("humanize", {})
     if flagged and cfg.get("enabled", True) and cfg.get("max_rewrites", 1) > 0:
@@ -113,8 +113,9 @@ def polish_batch(fields, ctx=""):
             for k, v in (d.items() if isinstance(d, dict) else []):
                 if k in flagged and isinstance(v, str):
                     t2 = autofix(v.strip().strip('"'))
-                    if len(lint(t2)) < len(flagged[k][1]):
-                        out[k] = (t2, lint(t2))
+                    left = lint(t2) + [x for x in (extra or {}).get(k, []) if x.split("'")[1:2] and x.split("'")[1] in t2]
+                    if len(left) < len(flagged[k][1]):
+                        out[k] = (t2, left)
         except Exception as e:
             log(f"humanize batch rewrite skipped: {e}")
     return out

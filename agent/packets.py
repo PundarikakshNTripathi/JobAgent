@@ -110,7 +110,10 @@ def build_packet(job_id, force=False):
     p = extract_json(text)
     style_warn = []
     fields = {"cover_letter": p.get("cover_letter") or ""} | {f"a:{k}": v for k, v in (p.get("answers") or {}).items() if isinstance(v, str) and v}
-    for key, (txt, w) in humanize.polish_batch(fields, ctx="A cover letter and job-application answers written by a student.").items():  # one rewrite call at most
+    import grounding
+    src = [json.dumps(PROFILE, ensure_ascii=False), job["desc"] or "", job["title"], job["company"], job["location"] or ""]
+    extra = {k: [f"unsupported figure '{n}': remove it or use a number from the profile" for n in grounding.unsupported_numbers(v, src)] for k, v in fields.items()}
+    for key, (txt, w) in humanize.polish_batch(fields, ctx="A cover letter and job-application answers written by a student.", extra=extra).items():  # one rewrite call at most
         if key == "cover_letter":
             p["cover_letter"] = txt
         else:

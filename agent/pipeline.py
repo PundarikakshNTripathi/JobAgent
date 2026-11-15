@@ -223,7 +223,13 @@ def triage(max_jobs=None):
             if jid not in by_id:
                 continue
             resume = o.get("resume") if o.get("resume") in PROFILE["resume_variants"] else "AI_Engineer"
-            verdict = o.get("verdict", "SKIP").upper()
+            verdict = str(o.get("verdict", "SKIP")).upper()
+            if verdict not in ("APPLY", "STRETCH", "SKIP"):
+                verdict = "SKIP" if not o.get("fit") else ("STRETCH" if float(o.get("fit") or 0) >= 50 else "SKIP")
+            try:
+                o["fit"] = max(0.0, min(100.0, float(o.get("fit", 0))))
+            except (TypeError, ValueError):
+                o["fit"] = 0.0
             c.execute("""INSERT OR REPLACE INTO triage(job_id,fit,verdict,resume,yoe_gap,reason,needs_referral,flags,at) VALUES(?,?,?,?,?,?,?,?,?)""",
                       (jid, float(o.get("fit", 0)), verdict, resume, o.get("yoe_gap", ""), o.get("reason", ""),
                        1 if o.get("needs_referral") else 0, json.dumps(o.get("flags", [])), now()))

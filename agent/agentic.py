@@ -11,7 +11,7 @@ from llm import run
 SYSTEM = """You are JobAgent's autonomous operator for ONE user. Achieve the GOAL using the tools below, one tool per step. Be economical: prefer reading state before spending model calls or browser time.
 {ctx}
 
-TOOLS (call exactly one per step as JSON {{"tool": name, "args": {{...}}, "note": "what the previous result told you that matters"}}; on your FIRST step also add
+TOOLS (call exactly one per step as JSON {{"thought": "one or two sentences of reasoning", "tool": name, "args": {{...}}, "note": "what the previous result told you that matters"}}; on your FIRST step also add
 "plan": "the 2-5 tool calls you intend"; to finish return {{"final": "plain-language report of what you did and found"}}):
 - recall {{"q": "", "kinds": "job,referral,person,fact,memory,chat"}}   search everything already known (jobs + JD eligibility, plans, people seen, facts); cheapest tool
 - status {{}}                                   counts by pipeline stage and today's usage
@@ -38,7 +38,8 @@ TOOLS (call exactly one per step as JSON {{"tool": name, "args": {{...}}, "note"
 - find_on_page {{"url": "", "q": ""}}           passages of a page that mention q
 - browse_task {{"goal": "", "url": ""}}         multi-step read-only browsing from url to answer goal (e.g. list open roles on a careers page)
 Browser tools are real: use them whenever the goal involves LinkedIn, YC, a careers page or any site. Report only people/jobs you actually saw, with URLs.
-Rules: never submit an application (the user does); never invent ids; stop as soon as the goal is met; at most {steps} steps.
+Rules: never submit an application (the user does); never invent ids, names, links or numbers: everything in your final answer must come from a tool result
+or the context above (links that did not appear there are removed automatically); if a tool fails, say so instead of guessing; stop as soon as the goal is met; at most {steps} steps.
 
 GOAL: {goal}
 
@@ -211,7 +212,7 @@ def loop(goal):
     for i in range(1, steps + 1):
         tr = (f"PLAN: {plan}\n" if plan else "") + (_fold(hist) or "(nothing yet)")
         prompt = SYSTEM.format(ctx=ctx, steps=steps, goal=goal, transcript=tr[-12000:])  # stable prefix first (system, profile, tools), volatile parts last
-        text, _ = run(prompt, kind="chat", timeout=240, max_turns=1)
+        text, _ = run(prompt, kind="agent", timeout=240, max_turns=1)
         try:
             d = extract_json(text)
         except ValueError:
@@ -229,4 +230,8 @@ def loop(goal):
             out = f"tool error: {e}"
         log(f"agent step {i}: {name} {json.dumps(args)[:80]}")
         hist.append((f"STEP {i}: {name} {json.dumps(args)[:200]}", str(d.get("note", ""))[:300], str(out)))
-    return final or "Stopped at the step limit. Progress:\n" + _fold(hist[-4:])
+    if final:
+        import grounding
+        final, _ = grounding.strip_unseen_urls(str(final), goal + "\n" + ctx + "\n" + "\n".join(r for _, _, r in hist))
+        return final
+    return "Stopped at the step limit. Progress:\n" + _fold(hist[-4:])

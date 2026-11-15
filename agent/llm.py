@@ -4,7 +4,7 @@ Every model call in JobAgent goes through run(). It (1) routes the task kind to 
 (5) logs tokens, time and cost per call. Adapters: claude_cli, agy_cli (Antigravity/Gemini), codex_cli, gemini_cli, openai_compat (OpenAI, OpenRouter,
 Gemini API, Ollama, LM Studio...), anthropic_api, cli_template (Hermes, oh-my-pi, anything else)."""
 import json, os, re, shutil, subprocess, tempfile, time, urllib.request, urllib.error
-import common
+import common, grounding
 from common import db, log, now, DATA
 
 LEAN_SYSTEM = "You are a precise assistant inside an automation pipeline. Follow the task exactly. When asked for JSON, output only the JSON."
@@ -67,6 +67,14 @@ def bg_calls_5h(provider):
 
 
 _autostart_tried = {}
+
+
+def context_limit(name):
+    """Input-token budget per provider: the local model's window minus room for its answer; hosted models default to a large window."""
+    if name == "local":
+        lc = common.SETTINGS["llm"].get("local", {})
+        return lc.get("ctx", 32768) - lc.get("max_tokens", 6144) - 512
+    return registry().get(name, {}).get("max_context", 0)
 
 
 def available(name):
@@ -322,7 +330,7 @@ def _openai_compat(prompt, route, o, name):
         think = o.get("kind") in lc.get("thinking_kinds", ["reflect", "today", "chat"])
         body["chat_template_kwargs"] = {"enable_thinking": think}
         body.update(temperature=0.6 if think else 0.7, top_p=0.95 if think else 0.8, top_k=20, min_p=0)
-        if not think and o.get("kind") in lc.get("json_kinds", ["triage", "bench", "rank", "ingest", "browse", "scout-plan", "packet-plan", "referral-plan"]):
+        if not think and o.get("kind") in lc.get("json_kinds", ["triage", "bench", "rank", "ingest", "browse", "agent", "scout-plan", "packet-plan", "referral-plan", "webplan"]):
             # grammar-constrained decoding: the server can only emit valid JSON, and a lower temperature keeps judgements consistent
             arr = re.search(r"ONLY (a |one )?JSON\s+array", prompt, re.I) is not None
             body["response_format"] = {"type": "json_schema", "json_schema": {"name": "out", "schema": {"type": "array", "items": {"type": "object"}} if arr else {"type": "object"}}}
@@ -386,9 +394,13 @@ def call_provider(name, route, prompt, o):
 def _web_augment(prompt, route, o, kind):
     import web
     plan_prompt = ("You are planning web research for the task below. Output ONLY JSON: {\"queries\":[up to 6 precise web search queries],\"urls\":[up to 4 URLs that appear in the task and should be read]}.\n\nTASK:\n" + prompt[:9000])
+    pr = route
+    wp = common.SETTINGS["llm"]["routing"].get("webplan")
+    if wp and wp.get("provider") not in (None, "", "auto") and available(wp["provider"])[0]:
+        pr = dict(wp)  # query planning is a small structured task: the cheap/local model does it
     try:
-        t, u = call_provider(route["provider"], route, plan_prompt, {**o, "allowed_tools": "", "mcp_config": None, "timeout": 180})
-        _log_usage(kind + "-plan", route["provider"], route.get("model"), u, 0)
+        t, u = call_provider(pr["provider"], pr, plan_prompt, {**o, "allowed_tools": "", "mcp_config": None, "timeout": 180, "kind": kind + "-plan"})
+        _log_usage(kind + "-plan", pr["provider"], pr.get("model"), u, 0)
         plan = common.extract_json(t)
     except Exception as e:
         log(f"web plan failed ({e}); continuing without notes")
@@ -396,7 +408,7 @@ def _web_augment(prompt, route, o, kind):
     notes = web.research_notes(plan.get("queries", [])[:6], plan.get("urls", [])[:4])
     if not notes.strip():  # search engine unreachable / nothing fetched: let a provider with native web tools do this call instead
         raise LLMError("web retrieval returned nothing (search engine unreachable); falling back to a provider with native web search")
-    return prompt + ("\n\nNOTE: you have no browsing tools in this run. Use ONLY the research notes below (fetched by the pipeline). If something is not in them, say it is unverified.\n"
+    return prompt + ("\n\nNOTE: you have no browsing tools in this run. Use ONLY the research notes below (fetched by the pipeline). Anything not supported by them must be left out, not guessed.\n"
                      "=== RESEARCH NOTES ===\n" + (notes or "(nothing could be retrieved)"))
 
 
@@ -438,6 +450,10 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
             continue
         p = prompt
         oo = dict(o)
+        limit = context_limit(name)
+        if limit and grounding.est_tokens(prompt) > limit:  # never let a model silently truncate its input (context rot): use one that fits
+            errors.append(f"{name}: prompt (~{grounding.est_tokens(prompt)} tokens) exceeds its context budget ({limit})")
+            continue
         t0 = time.time()
         try:
             if need_web and not caps.get("web"):

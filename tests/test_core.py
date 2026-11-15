@@ -134,6 +134,29 @@ class Retrieval(unittest.TestCase):
         self.assertEqual(rag.refresh(), 0)  # incremental: nothing changed
 
 
+class Grounding(unittest.TestCase):
+    def test_numbers(self):
+        import grounding
+        src = "Aegis: 3.75 us/event, 57 Go tests. FlyRank: 79.8M records, precision 0.56 to 0.70."
+        self.assertEqual(grounding.unsupported_numbers("Aegis scores in 3.75 us with 57 tests; precision 0.70.", src), [])
+        self.assertEqual(grounding.unsupported_numbers("cut latency 40% and served 2.3x more; graduating 2027 after 3 projects", src), ["2.3x", "40%"])
+
+    def test_urls(self):
+        import grounding
+        text, bad = grounding.strip_unseen_urls("see https://ok.com/a and https://made.up/x", "context https://ok.com/a")
+        self.assertEqual(bad, ["https://made.up/x"])
+        self.assertNotIn("made.up", text)
+
+    def test_context_budget_skips_local(self):
+        common.SETTINGS["llm"]["routing"]["triage"] = {"provider": "local", "model": "", "effort": ""}
+        common.SETTINGS["llm"]["fallbacks"] = ["claude"]
+        common.SETTINGS["llm"]["local"] = {"ctx": 4096, "max_tokens": 1024}
+        used = []
+        with mock.patch.object(llm, "available", lambda n: (True, "")), mock.patch.object(llm, "call_provider", lambda n, *a: used.append(n) or ("ok", {})):
+            llm.run("x " * 20000, kind="triage")
+        self.assertEqual(used, ["claude"])
+
+
 class Dedupe(unittest.TestCase):
     def test_keeps_direct_and_different_text(self):
         import pipeline
