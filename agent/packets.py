@@ -88,7 +88,9 @@ def packet_dir(job):
     return d
 
 
-def build_packet(job_id):
+def build_packet(job_id, force=False):
+    import jd
+    jd.gate(job_id, force=force)  # full posting read + requirements met, or GateError with the reason
     c = db()
     job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     tri = c.execute("SELECT * FROM triage WHERE job_id=?", (job_id,)).fetchone()
@@ -159,8 +161,15 @@ def pending_for_packets(limit):
     return c.execute("""SELECT j.id FROM jobs j JOIN triage t ON t.job_id=j.id
                         WHERE j.active=1 AND t.verdict IN ('APPLY','STRETCH') AND t.fit>=45
                           AND NOT EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)
-                          AND j.status NOT IN ('applied','skipped','dismissed')
+                          AND j.status NOT IN ('applied','skipped','dismissed','ineligible','closed')
                         ORDER BY (t.verdict='APPLY') DESC, t.fit DESC LIMIT ?""", (limit,)).fetchall()
+
+
+def _mark_ineligible(job_id, why):
+    c = db()
+    c.execute("UPDATE jobs SET status='ineligible' WHERE id=? AND status NOT IN ('applied','watch')", (job_id,))
+    c.commit()
+    log(f"jd gate: {job_id}: {why}")
 
 
 def run_packets(per_cycle=None):
@@ -171,9 +180,14 @@ def run_packets(per_cycle=None):
     if left <= 0:
         return []
     built = []
-    for r in pending_for_packets(left):
+    import jd
+    for r in pending_for_packets(left * 3):
+        if len(built) >= left:
+            break
         try:
             built.append(build_packet(r["id"]))
+        except jd.GateError as e:
+            _mark_ineligible(r["id"], str(e))
         except Exception as e:
             log(f"packet failed for {r['id']}: {e}")
     return built
@@ -191,5 +205,5 @@ def run_watch_drafts(limit=1):
         try:
             out.append(build_packet(r["job_id"]))
         except Exception as e:
-            log(f"watch draft failed {r['job_id']}: {e}")
+            log(f"watch draft skipped {r['job_id']}: {e}")
     return out

@@ -137,7 +137,9 @@ def submission_watchdog():
     return [(t.get("title", ""), t.get("url", "")) for t in tabs if t.get("type") == "page" and any(h in t.get("url", "").lower() for h in SUBMITTED_HINT)]
 
 
-def fill_job(job_id):
+def fill_job(job_id, force=False):
+    import jd
+    jd.gate(job_id, force=force)
     c = db()
     job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     pk = c.execute("SELECT * FROM packets WHERE job_id=?", (job_id,)).fetchone()

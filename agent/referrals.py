@@ -111,9 +111,11 @@ Return ONLY JSON:
 """
 
 
-def plan_referral(job_id, manual=False, require_linkedin=False):
+def plan_referral(job_id, manual=False, require_linkedin=False, force=False):
     """manual=True: the user asked for this one, so the daily LinkedIn cap (meant for background runs) does not apply.
     Whenever LinkedIn scouting does not run or fails, the plan says so on its first line instead of silently looking like a LinkedIn result."""
+    import jd
+    jd.gate(job_id, force=force)
     c = db()
     li_note = ""
     job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()

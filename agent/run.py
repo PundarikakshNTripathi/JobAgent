@@ -4,6 +4,7 @@
             poll | triage | scout  individual stages (poll costs no tokens)
  JOBS       top [n] | watch | status | usage | today [--force]
             packet <id> | referral <id> | linkedin <id> | resume <id> | fill <id>   (fill never submits; linkedin = read-only scouting)
+            add --force to prepare a job the eligibility gate rejected;  audit   re-check picks/packets against their full JDs
             picks                 add earlier hand-prepared jobs to My picks
             mark <id> applied|skip|dismissed [reason words]            (reasons teach the agent)
  YOU FIND   inbox                 process pending inbox items;  inbox add "<text or link>" ["<your context>"]
@@ -38,7 +39,7 @@ def in_fill_window():
 
 
 def cycle():
-    import pipeline, packets, referrals, fill, scout, dashboard, stakes, today, inbox, memory
+    import pipeline, packets, referrals, fill, scout, dashboard, stakes, today, inbox, memory, jd
     if common.needs_setup():
         log("no profile yet: run `python agent/run.py init` (or open the GUI setup)")
         return
@@ -77,6 +78,8 @@ def cycle():
                     break
                 try:
                     referrals.plan_referral(r["id"])
+                except jd.GateError as ex:
+                    packets._mark_ineligible(r["id"], str(ex))
                 except Exception as ex:
                     log(f"referral failed {r['id']}: {ex}")
         filled = []
@@ -89,6 +92,8 @@ def cycle():
                 try:
                     fill.fill_job(r["id"])
                     filled.append(r["id"])
+                except jd.GateError as ex:
+                    packets._mark_ineligible(r["id"], str(ex))
                 except Exception as ex:
                     log(f"fill failed {r['id']}: {ex}")
         try:
@@ -170,6 +175,8 @@ def doctor():
 
 def main():
     a = sys.argv[1:]
+    force = "--force" in a  # you insist on a job the eligibility gate rejected
+    a = [x for x in a if x != "--force"]
     cmd = a[0] if a else "status"
     if cmd in ("packet", "referral", "linkedin", "resume", "fill") and len(a) > 1:
         common.add_pick(a[1], {"linkedin": "referral"}.get(cmd, cmd))  # the user chose this job: list it under My picks
@@ -185,11 +192,17 @@ def main():
         pipeline.triage()
     elif cmd == "packet":
         import packets
-        print(packets.build_packet(a[1]))
+        print(packets.build_packet(a[1], force=force))
     elif cmd in ("referral", "linkedin"):
         import referrals
         # you asked for this one by hand: the background LinkedIn cap does not apply; `linkedin` insists on LinkedIn and warns loudly if it could not run
-        print(referrals.plan_referral(a[1], manual=True, require_linkedin=(cmd == "linkedin")))
+        print(referrals.plan_referral(a[1], manual=True, require_linkedin=(cmd == "linkedin"), force=force))
+    elif cmd == "audit":
+        import jd
+        rows = jd.audit()
+        for jid, co, ti, probs in rows:
+            print(f"{co[:22]:22} {ti[:50]:50} {'; '.join(probs)}  [{jid}]")
+        print(len(rows), "of your picks/packets/watchlist jobs may not fit you (marked in My picks; nothing deleted)")
     elif cmd == "picks":
         print(common.backfill_picks(), "earlier picks added to My picks")
     elif cmd == "resume":
@@ -197,7 +210,7 @@ def main():
         print(resume.advise(a[1]))
     elif cmd == "fill":
         import fill
-        print(fill.fill_job(a[1]))
+        print(fill.fill_job(a[1], force=force))
     elif cmd == "scout":
         import scout
         scout.run_scout(force=True)

@@ -119,8 +119,13 @@ def _fmt(r):
 def triage(max_jobs=None):
     c = db()
     limit = max_jobs or SETTINGS["max_triage_per_cycle"]
-    rows = c.execute("""SELECT * FROM jobs j WHERE active=1 AND score>=? AND NOT EXISTS (SELECT 1 FROM triage t WHERE t.job_id=j.id)
-                        ORDER BY score DESC LIMIT ?""", (SETTINGS["min_heuristic_score_for_llm"], limit)).fetchall()
+    try:  # read the full postings first (HTTP, no tokens) and drop the ones the candidate does not qualify for before any model call
+        import jd
+        jd.prefetch(limit)
+    except Exception as e:
+        log(f"jd prefetch failed: {e}")
+    rows = c.execute("""SELECT * FROM jobs j WHERE active=1 AND score>=? AND status NOT IN ('dismissed','ineligible','closed') AND NOT EXISTS (SELECT 1 FROM triage t WHERE t.job_id=j.id)
+                        ORDER BY COALESCE(jd_full,0) DESC, score DESC LIMIT ?""", (SETTINGS["min_heuristic_score_for_llm"], limit)).fetchall()
     if not rows:
         log("triage: nothing pending")
         return []

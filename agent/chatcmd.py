@@ -99,7 +99,7 @@ def launch(cmd, arg="", chat=True):
     """Start `run.py <cmd> <arg>` as a hidden background process. When `chat`, post a message into the chat when it finishes. Returns a status line."""
     if cmd == "inbox-retry":
         cmd, arg = "retry", arg
-    argv = {"retry": ["inbox", "retry", arg or "all"], "mark": ["mark"] + arg.split()}.get(cmd, [cmd] + ([arg] if arg else []))
+    argv = {"retry": ["inbox", "retry", arg or "all"], "mark": ["mark"] + arg.split()}.get(cmd, [cmd] + (arg.split() if cmd in JOB_CMDS else ([arg] if arg else [])))
     key = f"{cmd} {arg[:40]}".strip()
     with _lock:
         p = RUNNING.get(key)
@@ -167,8 +167,12 @@ def _targets_md(path):
 def summarize(cmd, arg, rc, out):
     c = db()
     jid = arg.split()[0] if arg and cmd in JOB_CMDS + ("mark",) else ""
+    arg = jid or arg
     job = c.execute("SELECT company,title FROM jobs WHERE id=?", (jid,)).fetchone() if jid else None
     label = f"{job['company']} - {job['title'][:50]}" if job else cmd
+    gate = re.search(r"GateError: (.*)", out)
+    if gate:
+        return f"{cmd} for {label} was not started: {gate.group(1)[:400]}"
     if rc != 0:
         return f"{cmd} for {label} FAILED (exit {rc}). Last lines:\n{_tail_text(out)}\n\nNothing was submitted. Check /usage if this looks like a quota problem, then try again."
     if cmd in ("referral", "linkedin") and job:
@@ -320,13 +324,14 @@ def execute(cmd, rest="", source="slash"):
         common.record_outcome(job["id"], st, " ".join(words[idx + 1:]))
         return f"Marked {_fmt_job(job)} as {st}."
     if cmd in JOB_CMDS:
-        job, msg = resolve(rest.split(" --")[0])
+        force = bool(re.search(r"(^|\s)(--)?force$", rest.strip()))
+        job, msg = resolve(re.sub(r"(^|\s)(--)?force$", "", rest.strip()).split(" --")[0])
         if not job:
             return msg
         common.add_pick(job["id"], {"linkedin": "referral"}.get(cmd, cmd))
         notes = {"linkedin": " I open your logged-in agent Chrome read-only (no Connect/Message/Follow clicks), look at 1st then 2nd degree people, and report names, profile links and how to approach each.  This takes a few minutes.",
                  "referral": " Uses LinkedIn when allowed, else public web; I will say which.", "fill": " It only fills the form and stops; you press Submit."}.get(cmd, "")
-        return f"{cmd} for {_fmt_job(job)}.{notes}\n" + launch(cmd, job["id"])
+        return f"{cmd} for {_fmt_job(job)}.{notes}\n" + launch(cmd, job["id"] + (" --force" if force else ""))
     return "Unknown command. /help lists them."
 
 

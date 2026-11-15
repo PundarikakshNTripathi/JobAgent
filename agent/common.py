@@ -180,6 +180,9 @@ CREATE TABLE IF NOT EXISTS chat(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, r
 CREATE TABLE IF NOT EXISTS referrals(job_id TEXT PRIMARY KEY, dir TEXT, at TEXT, how TEXT, state TEXT DEFAULT 'planned');
 CREATE TABLE IF NOT EXISTS picks(job_id TEXT PRIMARY KEY, ts TEXT, actions TEXT);
 CREATE TABLE IF NOT EXISTS outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, job_id TEXT, event TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS people(url TEXT PRIMARY KEY, company TEXT, name TEXT, headline TEXT, degree TEXT, mutual TEXT, location TEXT, about TEXT, source TEXT, seen_at TEXT);
+CREATE INDEX IF NOT EXISTS people_company ON people(company);
+CREATE TABLE IF NOT EXISTS llm_cache(k TEXT PRIMARY KEY, kind TEXT, text TEXT, at REAL);
 """
 
 
@@ -189,9 +192,9 @@ def db():
     c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA busy_timeout=90000")
     c.executescript(SCHEMA)
-    for col, typ in (("provider", "TEXT"), ("secs", "REAL")):  # forward-compatible migration of older workspaces
-        try:
-            c.execute(f"ALTER TABLE llm_log ADD COLUMN {col} {typ}")
+    for tbl, col, typ in (("llm_log", "provider", "TEXT"), ("llm_log", "secs", "REAL"), ("jobs", "jd_full", "INTEGER DEFAULT 0"), ("jobs", "req", "TEXT")):
+        try:  # forward-compatible migration of older workspaces
+            c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}")
         except sqlite3.OperationalError:
             pass
     return c
