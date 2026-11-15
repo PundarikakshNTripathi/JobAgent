@@ -5,13 +5,25 @@ over CDP. The agent can fill everything but is blocked from submitting:
      for `guard_minutes` after the run starts (longer than the agent's hard timeout), with a visible banner;
   3. hard subprocess timeout shorter than the guard window.
 You review the filled tab and press Submit yourself."""
-import json, os, socket, subprocess, time, urllib.request
+import json, os, shutil, socket, subprocess, time, urllib.request
 from common import db, log, now, run_claude, extract_json, DATA, SETTINGS, PROFILE, budget_add, notify
 
 PORT = SETTINGS["chrome_debug_port"]
 ACCOUNT_WALLS = ("myworkdayjobs.com", "icims.com", "taleo.net", "successfactors", "oraclecloud.com/hcmui", "smartrecruiters.com/oneclick")
 CHROME_CANDIDATES = [r"C:\Program Files\Google\Chrome\Application\chrome.exe", r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-                     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
+                     os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"), r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
+for _n in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"):
+    _w = shutil.which(_n)
+    if _w:
+        CHROME_CANDIDATES.append(_w)
+try:  # Playwright's own Chromium (installed by the installer when no browser is present)
+    import glob as _g
+    CHROME_CANDIDATES += sorted(_g.glob(os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome")) + _g.glob(os.path.expanduser("~/Library/Caches/ms-playwright/chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium")) +
+                                _g.glob(os.path.expandvars(r"%LOCALAPPDATA%\ms-playwright\chromium-*\chrome-win*\chrome.exe")))
+except Exception:
+    pass
 
 GUARD_JS = r"""
 (() => {
@@ -160,8 +172,17 @@ def fill_job(job_id, force=False):
     until = int((time.time() + SETTINGS["guard_minutes"] * 60) * 1000)
     guard = os.path.join(DATA, "guard.js")
     open(guard, "w", encoding="utf-8").write(GUARD_JS % until)
-    mcp = {"mcpServers": {"fillbrowser": {"command": "cmd", "args": ["/c", "npx", "-y", "@playwright/mcp@0.0.84", "--cdp-endpoint", f"http://127.0.0.1:{PORT}",
-                                                                  "--init-script", guard, "--allow-unrestricted-file-access"]}}}
+    log(f"filling {job['company']} | {job['title']} ...")
+    rep = None
+    try:  # cheap path first: script reads the form, one model call maps values, Playwright types them
+        import formfill
+        rep = formfill.fill(job, data, GUARD_JS % until)
+    except Exception as e:
+        log(f"formfill failed ({str(e)[:200]}); using the model-driven fill")
+    if rep:
+        return _finish(c, job, pk, job_id, rep)
+    import browser
+    mcp = {"mcpServers": {"fillbrowser": browser.npx_server(["@playwright/mcp@0.0.84", "--cdp-endpoint", f"http://127.0.0.1:{PORT}", "--init-script", guard, "--allow-unrestricted-file-access"])}}
     mcp_path = os.path.join(DATA, "mcp-fill.json")
     json.dump(mcp, open(mcp_path, "w"), indent=1)
     prof = {k: PROFILE[k] for k in ("name", "first_name", "last_name", "email", "phone", "location", "linkedin", "github", "org_github", "website", "twitter", "education",
@@ -169,7 +190,6 @@ def fill_job(job_id, force=False):
     prompt = FILL_PROMPT.format(company=job["company"], title=job["title"], url=job["url"], profile=json.dumps(prof, indent=1),
                                 resume=data.get("resume_path", ""), transcript=PROFILE.get("transcript_pdf", "(none)"), cover_pdf=data.get("cover_pdf") or "(none generated; paste text)", cover=data.get("cover_letter", ""),
                                 answers=json.dumps(data.get("answers", {}), indent=1), formq=json.dumps(data.get("form_questions", []), indent=1))
-    log(f"filling {job['company']} | {job['title']} ...")
     timeout = min(SETTINGS["fill_timeout_s"], SETTINGS["guard_minutes"] * 60 - 60)
     text, _ = run_claude(prompt, kind="fill", allowed_tools="mcp__fillbrowser", timeout=timeout, max_turns=70,
                          mcp_config=mcp_path, persist=True)
@@ -177,6 +197,11 @@ def fill_job(job_id, force=False):
         rep = extract_json(text)
     except Exception:
         rep = {"status": "PARTIAL", "filled": [], "needs_user": [], "blocker": "could not parse fill report: " + text[:300]}
+    rep.setdefault("how", "model-driven")
+    return _finish(c, job, pk, job_id, rep)
+
+
+def _finish(c, job, pk, job_id, rep):
     c.execute("UPDATE packets SET filled_at=?, fill_report=? WHERE job_id=?", (now(), json.dumps(rep), job_id))
     status = rep.get("status", "PARTIAL")
     c.execute("UPDATE jobs SET status=? WHERE id=?", ("ready" if status == "READY_TO_SUBMIT" else "fill-" + status.lower(), job_id))

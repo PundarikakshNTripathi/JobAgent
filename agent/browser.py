@@ -1,5 +1,5 @@
 """Shared helpers for Claude-driven browser sessions in the dedicated agent Chrome (CDP port, own profile, you are logged in to LinkedIn / YC there)."""
-import json, os, time
+import json, os, shutil, time
 from common import DATA, SETTINGS
 import fill
 
@@ -25,14 +25,21 @@ READONLY_GUARD = r"""
 """
 
 
+def npx_server(args):
+    """MCP server entry that runs `npx -y <args>` on any OS (Windows needs cmd /c for the npx.cmd shim)."""
+    if os.name == "nt":
+        return {"command": "cmd", "args": ["/c", "npx", "-y"] + args}
+    return {"command": shutil.which("npx") or "npx", "args": ["-y"] + args}
+
+
 def mcp_config(name="readonly", guard_js=None):
     """Write an MCP config attaching Playwright to the agent Chrome. guard_js=None -> no init script."""
     fill.ensure_chrome()
-    args = ["/c", "npx", "-y", "@playwright/mcp@0.0.84", "--cdp-endpoint", f"http://127.0.0.1:{SETTINGS['chrome_debug_port']}", "--allow-unrestricted-file-access"]
+    args = ["@playwright/mcp@0.0.84", "--cdp-endpoint", f"http://127.0.0.1:{SETTINGS['chrome_debug_port']}", "--allow-unrestricted-file-access"]
     if guard_js:
         gp = os.path.join(DATA, f"guard-{name}.js")
         open(gp, "w", encoding="utf-8").write(guard_js)
         args += ["--init-script", gp]
     path = os.path.join(DATA, f"mcp-{name}.json")
-    json.dump({"mcpServers": {"fillbrowser": {"command": "cmd", "args": args}}}, open(path, "w"), indent=1)
+    json.dump({"mcpServers": {"fillbrowser": npx_server(args)}}, open(path, "w"), indent=1)
     return path
