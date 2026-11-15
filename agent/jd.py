@@ -219,15 +219,15 @@ def prefetch(limit=30, use_browser=False):
     read = dropped = 0
     t0 = time.time()
     for r in rows:
-        res = check(r["id"], use_browser=use_browser)
+        res = check(r["id"], use_browser=use_browser)  # writes through its own connection
         read += res["jd_read"]
         if res["jd_read"] and not res["ok"]:
             c.execute("UPDATE jobs SET status='dismissed' WHERE id=?", (r["id"],))
             c.execute("DELETE FROM watch WHERE job_id=?", (r["id"],))
+            c.commit()  # never hold a write transaction open while check() writes on another connection (that deadlocks SQLite)
             dropped += 1
         if time.time() - t0 > 600:
             break
-    c.commit()
     if rows:
         log(f"jd prefetch: read {read}/{len(rows)} full postings, dismissed {dropped} you do not qualify for")
     return read, dropped

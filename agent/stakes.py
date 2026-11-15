@@ -31,7 +31,8 @@ def promote_triaged():
     # independent of the (cheap, conservative) LLM verdict: prestige roles are tracked even when odds look low, unless clearly ineligible (PhD-only etc.)
     for r in c.execute("""SELECT j.* FROM jobs j LEFT JOIN triage t ON t.job_id=j.id
                           WHERE j.active=1 AND j.score>=60 AND j.status IN ('new','triaged','skipped')
-                            AND (t.job_id IS NULL OR t.verdict!='SKIP' OR (t.flags NOT LIKE '%phd%' AND t.flags NOT LIKE '%clearance%'))""").fetchall():
+                            AND (t.job_id IS NULL OR t.verdict!='SKIP' OR (t.flags NOT LIKE '%phd%' AND t.flags NOT LIKE '%clearance%'))
+                            AND COALESCE(j.req,'') NOT LIKE '%"ok": false%'""").fetchall():  # the full-JD eligibility gate already ruled it out
         why = is_high_stakes(r)
         if why:
             add_watch(r["id"], why)
