@@ -25,7 +25,7 @@ def dedupe():
     for rows in groups.values():
         if len(rows) < 2:
             continue
-        agg = lambda r: r["id"].split(":")[0] in AGGREGATORS
+        agg = lambda r: r["id"].split(":")[0].startswith(AGGREGATORS)  # e.g. speedyapply-ai, speedyapply-swe
         rows.sort(key=lambda r: (-r["mine"], agg(r), -r["jf"], -(r["score"] or 0)))
         keep = rows[0]
         kd = norm(keep["desc"])[:600]
