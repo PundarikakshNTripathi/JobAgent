@@ -53,6 +53,9 @@ Set-Location $App
 # 3. Virtual environment + packages
 if (-not (Test-Path ".venv")) { & $PyExe $(if ($PyArg) { $PyArg }) -m venv .venv }
 $VPy = Join-Path $App ".venv\Scripts\python.exe"
+# A new venv starts with the pip bundled in Python, which may still trust the revoked eMudhra/emSign CAs (October 2026 incident).
+# First upgrade to the fixed pip by a hash-pinned URL (pip verifies the hash, so a forged download is rejected), then normally.
+& $VPy -m pip install -q "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
 & $VPy -m pip install -q --upgrade pip
 & $VPy -m pip install -q -r requirements.txt
 # 4. Browser
