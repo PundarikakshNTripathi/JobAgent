@@ -38,12 +38,15 @@ def packet_files(job_id):
     d = r["dir"]
     rd = lambda n: open(os.path.join(d, n), encoding="utf-8").read() if os.path.exists(os.path.join(d, n)) else ""
     files = {"README": rd("README.md"), "COVER": rd("cover_letter.txt"), "REFERRAL": rd("REFERRAL.md"), "RESUME": rd("RESUME.md"), "FILL": rd("FILL_REPORT.md")}
-    return {"exists": any(files.values()), "files": files, "dir": d}
+    rf = c.execute("SELECT stale, at FROM referrals WHERE job_id=?", (job_id,)).fetchone()
+    jb = c.execute("SELECT checked, posted, posted_src, active, status FROM jobs WHERE id=?", (job_id,)).fetchone()
+    return {"exists": any(files.values()), "files": files, "dir": d, "plan_stale": (rf["stale"] if rf else "") or "", "plan_at": (rf["at"] if rf else "") or "",
+            "checked": (jb["checked"] if jb else "") or "", "closed": bool(jb and (not jb["active"] or jb["status"] == "ineligible"))}
 
 
 def state():
     c = db()
-    rows = c.execute("""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.score,j.loc_class,j.visa,j.yoe,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,
+    rows = c.execute("""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.posted,j.posted_src,j.checked,j.score,j.loc_class,j.visa,j.yoe,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,
                                p.dir,w.note watch_note, (SELECT 1 FROM referrals r WHERE r.job_id=j.id) has_ref
                         FROM jobs j LEFT JOIN triage t ON t.job_id=j.id LEFT JOIN packets p ON p.job_id=j.id LEFT JOIN watch w ON w.job_id=j.id
                         WHERE j.active=1 AND j.status NOT IN ('skipped','dismissed','ineligible') AND (j.status!='new' OR j.score>=65)
@@ -121,12 +124,12 @@ def browse_jobs(q):
     if one("days"):
         w.append("j.first_seen>=date('now',?,'localtime')")
         a.append(f"-{int(one('days'))} day")
-    order = {"fit": "COALESCE(t.fit,j.score) DESC", "score": "j.score DESC", "new": "j.first_seen DESC", "company": "lower(j.company), COALESCE(t.fit,j.score) DESC"}.get(one("sort", "fit"), "COALESCE(t.fit,j.score) DESC")
+    order = {"fit": "COALESCE(t.fit,j.score) DESC", "score": "j.score DESC", "new": "COALESCE(j.posted, substr(j.first_seen,1,10)) DESC, j.first_seen DESC", "company": "lower(j.company), COALESCE(t.fit,j.score) DESC"}.get(one("sort", "fit"), "COALESCE(t.fit,j.score) DESC")
     per = max(5, min(100, int(one("per", "25"))))
     page = max(1, int(one("page", "1")))
     base = f"FROM jobs j LEFT JOIN triage t ON t.job_id=j.id WHERE {' AND '.join(w)}"
     total = c.execute(f"SELECT COUNT(*) {base}", a).fetchone()[0]
-    rows = c.execute(f"""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.posted,j.first_seen,j.score,j.loc_class,j.family,j.early,j.yoe,j.visa,j.status,j.category,
+    rows = c.execute(f"""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.posted,j.posted_src,j.checked,j.first_seen,j.score,j.loc_class,j.family,j.early,j.yoe,j.visa,j.status,j.category,
                                 substr(j.desc,1,900) snippet,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,{hr} has_ref,(EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)) has_packet,
                                 (t.job_id IS NOT NULL) analysed {base} ORDER BY {order} LIMIT ? OFFSET ?""", (*a, per, (page - 1) * per)).fetchall()
     items = [dict(r) for r in rows]
@@ -152,7 +155,7 @@ def picks_info():
     c = db()
     out = []
     for r in c.execute("""SELECT p.job_id, p.ts, p.actions, j.company, j.title, j.location, j.url, j.score, j.tier, j.status, j.visa, j.yoe, j.loc_class, t.verdict, t.fit,
-                                 pk.dir pdir, pk.filled_at, pk.referral_at, rf.dir rdir
+                                 pk.dir pdir, pk.filled_at, pk.referral_at, rf.dir rdir, rf.stale rstale, j.posted, j.posted_src
                           FROM picks p JOIN jobs j ON j.id=p.job_id LEFT JOIN triage t ON t.job_id=p.job_id LEFT JOIN packets pk ON pk.job_id=p.job_id LEFT JOIN referrals rf ON rf.job_id=p.job_id
                           ORDER BY p.ts DESC LIMIT 200""").fetchall():
         d = r["pdir"] or r["rdir"]
@@ -170,7 +173,7 @@ def picks_info():
         import browse
         ppl = [{"name": x["name"], "degree": x["degree"], "url": x["url"], "headline": x["headline"][:90]} for x in browse.cached_people(r["company"], days=30)[:4]]
         out.append({"problems": probs, "people": ppl, "id": r["job_id"], "ts": r["ts"], "company": r["company"], "title": r["title"], "location": r["location"], "url": r["url"], "score": r["score"], "tier": r["tier"],
-                    "status": r["status"], "visa": r["visa"], "yoe": r["yoe"], "loc_class": r["loc_class"], "verdict": r["verdict"], "fit": r["fit"], "wanted": want, "has": has, "ready": done})
+                    "status": r["status"], "visa": r["visa"], "yoe": r["yoe"], "loc_class": r["loc_class"], "verdict": r["verdict"], "fit": r["fit"], "wanted": want, "plan_stale": r["rstale"], "posted": r["posted"], "posted_src": r["posted_src"], "has": has, "ready": done})
     return out
 
 
@@ -196,7 +199,41 @@ def usage_info():
                                                    ORDER BY provider, calls DESC""", (f"-{days} day",)).fetchall()]
     daily = [dict(r) for r in c.execute("""SELECT substr(ts,1,10) day, COALESCE(provider,'claude') provider, COUNT(*) calls, COALESCE(SUM(inp+cache_create+cache_read+outp),0) tokens
                                            FROM llm_log WHERE ts>=date('now','-13 day','localtime') GROUP BY day, provider ORDER BY day""").fetchall()]
-    return {"today": q(0), "week": q(7), "month": q(30), "daily": daily, "budgets": common.SETTINGS["llm"].get("budgets", {})}
+    recent = [dict(r) for r in c.execute("""SELECT ts, COALESCE(provider,'claude') provider, kind, COALESCE(inp+cache_create+cache_read,0) tin, COALESCE(outp,0) tout,
+                                           ROUND(COALESCE(secs,0),1) secs FROM llm_log ORDER BY rowid DESC LIMIT 60""").fetchall()]
+    return {"today": q(0), "week": q(7), "month": q(30), "daily": daily, "recent": recent, "budgets": common.SETTINGS["llm"].get("budgets", {})}
+
+
+def activity_info():
+    """What is happening right now and what just happened (item 8): running jobs with their live stage, plus the latest log lines."""
+    import chatcmd, time as _t
+    c = db()
+    running = []
+    for k, p in list(chatcmd.RUNNING.items()):
+        if p.poll() is None:
+            running.append({"name": k, "since": ""})
+    lock = os.path.join(DATA, "cycle.lock")
+    stage = (meta_get(c, "cycle_stage") or "|").split("|", 1)
+    if os.path.exists(lock) and _t.time() - os.path.getmtime(lock) < 100 * 60 and not any(r["name"] == "cycle" for r in running):
+        running.append({"name": "cycle", "since": ""})
+    for r in running:
+        if r["name"] == "cycle":
+            r["stage"] = stage[1] if stage[1] != "done" else ""
+            r["since"] = stage[0][11:16]
+    if CHAT_BUSY["on"]:
+        running.append({"name": "chat", "stage": "thinking", "since": ""})
+    lines = []
+    try:
+        with open(os.path.join(LOGS, "agent.log"), encoding="utf-8", errors="replace") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 12000))
+            for ln in f.read().splitlines()[-40:]:
+                m = re.match(r"\[(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)\] (.*)", ln)
+                if m:
+                    lines.append({"ts": m.group(1), "text": m.group(2)[:240]})
+    except OSError:
+        pass
+    return {"running": running, "log": lines[::-1][:30]}
 
 
 _sched_cache = {"t": 0, "v": None}
@@ -216,15 +253,13 @@ def spawn(cmd, arg=""):
     return {"error": "already running"} if msg.startswith("already running") else {"started": msg.replace("started: ", "")}
 
 
-def chat_thread(text):
+def chat_thread(text, thread=1):
     import inbox
     try:
-        CHAT_BUSY["on"] = True
-        inbox.reply(text)
+        CHAT_BUSY["on"] = thread
+        inbox.reply(text, thread)
     except Exception as e:
-        c = db()
-        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (common.now(), "agent", f"(failed: {str(e)[:200]})"))
-        c.commit()
+        inbox.say("agent", f"(failed: {str(e)[:200]})", thread)
     finally:
         CHAT_BUSY["on"] = False
 
@@ -274,6 +309,20 @@ class H(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(b)
                 return
+            if path == "/api/ping":
+                return self._j({"ok": True})
+            if path == "/manifest.webmanifest":
+                import desktop
+                return self._send(200, desktop.manifest(), "application/manifest+json")
+            if path in ("/icon-192.png", "/icon-512.png", "/icon.ico"):
+                b = open(os.path.join(os.path.dirname(STATIC), path.lstrip("/")), "rb").read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/x-icon" if path.endswith(".ico") else "image/png")
+                self.send_header("Content-Length", str(len(b)))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(b)
+                return
             if path in ("/favicon.svg", "/favicon.ico"):
                 b = open(os.path.join(os.path.dirname(STATIC), "favicon.svg"), "rb").read()
                 self.send_response(200)
@@ -303,8 +352,13 @@ class H(http.server.BaseHTTPRequestHandler):
             if path == "/api/inbox":
                 return self._j([dict(r) for r in db().execute("SELECT * FROM inbox ORDER BY id DESC LIMIT 30").fetchall()])
             if path == "/api/chat":
-                rows = [dict(r) for r in db().execute("SELECT * FROM chat ORDER BY id DESC LIMIT 60").fetchall()][::-1]
-                return self._j({"messages": rows, "busy": CHAT_BUSY["on"]})
+                import inbox
+                inbox.ensure_threads()
+                tid = int((q.get("thread") or ["0"])[0] or 0) or (inbox.list_threads() or [{"id": 1}])[0]["id"]
+                rows = [dict(r) for r in db().execute("SELECT * FROM chat WHERE thread=? ORDER BY id DESC LIMIT 80", (tid,)).fetchall()][::-1]
+                return self._j({"messages": rows, "busy": CHAT_BUSY["on"] == tid, "thread": tid, "threads": inbox.list_threads()})
+            if path == "/api/activity":
+                return self._j(activity_info())
             if path == "/api/commands":
                 import chatcmd
                 return self._j({"commands": chatcmd.commands_json()})
@@ -381,9 +435,21 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._j({"id": i})
             if path == "/api/chat":
                 text = str(d.get("text", "")).strip()[:4000]
+                tid = int(d.get("thread") or 1)
                 if text and not CHAT_BUSY["on"]:
-                    threading.Thread(target=chat_thread, args=(text,), daemon=True).start()
-                return self._j({"ok": True})
+                    threading.Thread(target=chat_thread, args=(text, tid), daemon=True).start()
+                    return self._j({"ok": True})
+                return self._j({"ok": False, "error": "the agent is still answering another message"})
+            if path == "/api/threads":
+                import inbox
+                act = d.get("action")
+                if act == "new":
+                    return self._j({"id": inbox.new_thread()})
+                if act == "rename" and d.get("id"):
+                    inbox.rename_thread(int(d["id"]), str(d.get("title", ""))[:80] or "Untitled")
+                elif act == "delete" and d.get("id"):
+                    inbox.delete_thread(int(d["id"]))
+                return self._j({"threads": inbox.list_threads()})
             if path == "/api/voice":
                 import humanize
                 if d.get("sample"):

@@ -194,6 +194,8 @@ def cache_get(kind, route, prompt):
 def cache_put(kind, route, prompt, text):
     if not common.SETTINGS["llm"].get("cache_hours", {}).get(kind):
         return
+    if (text or "").strip() in ("", "[]", "{}", "null"):  # never remember an empty answer: it may be a model's miss, not a fact
+        return
     try:
         c = db()
         c.execute("INSERT OR REPLACE INTO llm_cache(k,kind,text,at) VALUES(?,?,?,?)", (_cache_key(kind, route, prompt), kind, text, time.time()))
@@ -315,6 +317,8 @@ def _http(url, body, headers, timeout):
         raise LLMError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
 
 
+JSON_KINDS = ["triage", "bench", "rank", "ingest", "browse", "agent", "chat", "summary", "packet", "outreach", "resume", "referral", "scout",
+              "today", "reflect", "fill", "yc", "scout-plan", "packet-plan", "referral-plan", "webplan"]
 _THINK = re.compile(r"<think>.*?</think>\s*", re.S)
 
 
@@ -327,10 +331,11 @@ def _openai_compat(prompt, route, o, name):
         # Hybrid-thinking local models: reason step by step only where judgement matters (triage, ranking, reflection, the agent); answer
         # directly for extraction and browsing steps. Sampling follows the model card's recommendations for each mode.
         lc = common.SETTINGS["llm"].get("local", {})
-        think = o.get("kind") in lc.get("thinking_kinds", ["reflect", "today", "chat"])
+        think = o.get("kind") in lc.get("thinking_kinds", ["reflect", "today"])
         body["chat_template_kwargs"] = {"enable_thinking": think}
         body.update(temperature=0.6 if think else 0.7, top_p=0.95 if think else 0.8, top_k=20, min_p=0)
-        if not think and o.get("kind") in lc.get("json_kinds", ["triage", "bench", "rank", "ingest", "browse", "agent", "scout-plan", "packet-plan", "referral-plan", "webplan"]):
+        wants_json = re.search(r"(Return|Output|Reply with)\s+(ONLY|ONE)\b[^\n]{0,40}JSON", prompt) is not None
+        if not think and wants_json and o.get("kind") in lc.get("json_kinds", JSON_KINDS):
             # grammar-constrained decoding: the server can only emit valid JSON, and a lower temperature keeps judgements consistent
             arr = re.search(r"ONLY (a |one )?JSON\s+array", prompt, re.I) is not None
             body["response_format"] = {"type": "json_schema", "json_schema": {"name": "out", "schema": {"type": "array", "items": {"type": "object"}} if arr else {"type": "object"}}}

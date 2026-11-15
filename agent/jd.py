@@ -53,13 +53,13 @@ def _from_browser(url):
         return ""
 
 
-def ensure_full_jd(job_id, use_browser=True):
-    """Make sure the stored description is the full posting. Returns (row, ok)."""
+def ensure_full_jd(job_id, use_browser=True, refresh=False):
+    """Make sure the stored description is the full posting. refresh=True reads it again (closed postings, edited requirements). Returns (row, ok)."""
     c = db()
     job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     if not job:
         raise GateError("unknown job")
-    if job["jd_full"]:
+    if job["jd_full"] and not refresh:
         return job, True
     text = _from_ats(job)
     if len(text) < MIN_JD and job["url"]:
@@ -181,10 +181,10 @@ def problems(req):
     return out
 
 
-def check(job_id, use_browser=True):
+def check(job_id, use_browser=True, refresh=False):
     """Read the full posting and evaluate it. Returns dict(ok, jd_read, problems, req). Stores the result on the job."""
     try:
-        job, read = ensure_full_jd(job_id, use_browser=use_browser)
+        job, read = ensure_full_jd(job_id, use_browser=use_browser, refresh=refresh)
     except GateError as e:
         return {"ok": False, "jd_read": False, "problems": [str(e)], "req": {}}
     req = requirements(job)
@@ -193,7 +193,7 @@ def check(job_id, use_browser=True):
         probs = ["could not read the full job description (the page needs a login, or blocks automated reading)"]
     res = {"ok": not probs, "jd_read": read, "problems": probs, "req": req, "checked": now()}
     c = db()
-    c.execute("UPDATE jobs SET req=? WHERE id=?", (json.dumps(res), job_id))
+    c.execute("UPDATE jobs SET req=?, checked=? WHERE id=?", (json.dumps(res), now(), job_id))
     c.commit()
     return res
 

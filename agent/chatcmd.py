@@ -47,9 +47,14 @@ NL_AUTO = JOB_CMDS[:4] + PLAIN[:3] + ("yc-profile", "retry", "remember", "ingest
 NL_NEEDS_WORDS = {"fill": r"\bfill|auto-?fill", "mark": r"\b(mark|applied|skip|dismiss|ignore|reject)", "agent": r"\bagent|work on|figure out|research|find out|do this|take care"}
 
 
-def say(role, text):
+_CUR = {"thread": 1}  # the chat thread a command was typed in; background results are posted back there
+
+
+def say(role, text, thread=None):
+    t = thread or _CUR["thread"]
     c = db()
-    c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), role, text))
+    c.execute("INSERT INTO chat(ts,role,text,thread) VALUES(?,?,?,?)", (now(), role, text, t))
+    c.execute("UPDATE threads SET updated=? WHERE id=?", (now(), t))
     c.commit()
 
 
@@ -111,7 +116,7 @@ def launch(cmd, arg="", chat=True):
         logf = open(logp, "w", encoding="utf-8")
         p = subprocess.Popen([sys.executable, "-u", RUN_PY] + argv, stdout=logf, stderr=subprocess.STDOUT, cwd=CORE)
         RUNNING[key] = p
-    t = threading.Thread(target=_watch, args=(key, cmd, arg, p, logp, logf, chat), daemon=True)
+    t = threading.Thread(target=_watch, args=(key, cmd, arg, p, logp, logf, chat, _CUR["thread"]), daemon=True)
     t.start()
     THREADS.append(t)
     return f"started: {key}"
@@ -130,7 +135,7 @@ def _tail(path, n=12, maxc=1400):
     return "\n".join(lines[-n:])[-maxc:]
 
 
-def _watch(key, cmd, arg, p, logp, logf, chat):
+def _watch(key, cmd, arg, p, logp, logf, chat, thread=1):
     rc = p.wait()
     logf.close()
     out = _tail(logp, 400, 20000)
@@ -144,9 +149,9 @@ def _watch(key, cmd, arg, p, logp, logf, chat):
     if not chat:
         return
     try:
-        say("agent", summarize(cmd, arg, rc, out))
+        say("agent", summarize(cmd, arg, rc, out), thread)
     except Exception as e:  # never let a summary problem hide that the job ended
-        say("agent", f"{key} finished (exit {rc}); could not summarise it: {e}")
+        say("agent", f"{key} finished (exit {rc}); could not summarise it: {e}", thread)
 
 
 def _targets_md(path):
@@ -261,7 +266,8 @@ def cmd_watch():
 
 
 # ------------------------------------------------------------------ slash entry point
-def run_slash(text):
+def run_slash(text, thread=1):
+    _CUR["thread"] = thread
     """text starts with '/'. Returns the reply (already stored by the caller)."""
     m = re.match(r"/([\w-]+)\s*(.*)", text.strip(), re.S)
     if not m:
@@ -351,7 +357,8 @@ def execute(cmd, rest="", source="slash"):
 
 
 # ------------------------------------------------------------------ natural language
-def execute_nl_actions(user_text, actions):
+def execute_nl_actions(user_text, actions, thread=1):
+    _CUR["thread"] = thread
     """Actions the chat model chose from a plain-language request. Prep actions run at once (the user asked for them in words); status-changing or
     form-filling ones only run when the user's own words call for them, otherwise they come back as confirm-buttons. Returns (done_lines, proposals)."""
     done, props = [], []

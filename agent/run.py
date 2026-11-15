@@ -7,11 +7,14 @@
             packet <id> | referral <id> | linkedin <id> | resume <id> | fill <id>   (fill never submits; linkedin = read-only scouting)
             add --force to prepare a job the eligibility gate rejected;  audit   re-check picks/packets against their full JDs
             picks                 add earlier hand-prepared jobs to My picks
+            selftest [provider]   run every task's real prompt on one provider and check the output (default: local)
+            refresh [--no-plans]  re-read postings you work on, re-triage teasers, rebuild stale referral plans
             mark <id> applied|skip|dismissed [reason words]            (reasons teach the agent)
  YOU FIND   inbox                 process pending inbox items;  inbox add "<text or link>" ["<your context>"]
             chat "<message>"      talk to the agent;  agent "<goal>"   let it work a multi-step goal with tools
  SETUP      init                  create your workspace + profile (interactive)      doctor   check everything
             providers [test <name>]   list/test LLM providers      bench [n]   benchmark providers on your data
+            app / shortcuts       desktop window / Start-menu entry
             gui [--no-open]       local web GUI                       yc-profile  rewrite your YC profile (truthful)
  SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-times HH:MM [HH:MM]   (default 09:00 18:00)
  MEMORY     reflect               update the agent's memory + scoring tweaks from your outcomes
@@ -56,6 +59,12 @@ def cycle():
         stage("Polling job boards")
         new_ids, first = pipeline.poll()
         pipeline.instant_alerts(new_ids, first)
+        stage("Refreshing what you are working on")
+        try:
+            import maintenance
+            maintenance.refresh()
+        except Exception as ex:
+            log(f"maintenance failed: {ex}")
         stage("Reading full job descriptions")
         try:
             import visa
@@ -268,6 +277,12 @@ def main():
             print(local_ai.bench(apply="--apply" in a))
         else:
             local_setup(local_ai, assume_yes="--yes" in a)
+    elif cmd == "selftest":
+        import harness_check
+        harness_check.run_all(a[1] if len(a) > 1 else "local")
+    elif cmd == "refresh":
+        import maintenance
+        print(maintenance.refresh(refresh_plans="--no-plans" not in a))
     elif cmd == "audit":
         import jd
         rows = jd.audit()
@@ -323,6 +338,12 @@ def main():
         print(visa.rescore_all(), "jobs rescored")
     elif cmd == "doctor":
         doctor()
+    elif cmd == "app":
+        import desktop
+        desktop.open_window()
+    elif cmd == "shortcuts":
+        import desktop
+        desktop.install_shortcuts()
     elif cmd == "gui":
         import gui
         gui.serve(open_browser="--no-open" not in a)

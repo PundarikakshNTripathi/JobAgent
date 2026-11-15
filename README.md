@@ -67,7 +67,7 @@ What the installer does:
 3. Creates a private Python environment (`.venv`) and installs Playwright, the only package needed.
 4. Uses your Chrome, Edge or Chromium. If none is installed, it installs a Chromium that only JobAgent uses. On minimal Linux it offers the system libraries the browser needs.
 5. Asks where your **personal workspace** should live (default `~/JobAgent`).
-6. Adds a `jobagent` command (`jobagent gui`, `jobagent doctor`, …).
+6. Adds a `jobagent` command (`jobagent` alone opens the app; `jobagent doctor`, `jobagent cycle`, …) and a **JobAgent app shortcut**: Start menu + desktop on Windows, the app launcher on Linux, `~/Applications/JobAgent.app` on macOS.
 7. Starts the **setup wizard**. It asks only where your choice matters and shows a default you accept with Enter:
 
 | Step | You choose | Default |
@@ -97,9 +97,9 @@ python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt     
 ## 2. Your first 15 minutes
 
 1. **Run `jobagent doctor`.** Every line should say ready/OK: profile, at least one AI provider, the browser, and the schedule.
-2. **Log in once in the agent's browser** to LinkedIn and YC Work at a Startup. The wizard opens it for you, and `jobagent gui` → Settings has a button too. These sessions live only in JobAgent's own browser profile.
-3. **Run `jobagent gui`.** It opens `http://127.0.0.1:8777` with a short guided tour.
-4. **Press Run pipeline now** (top right) for the first sweep. The button shows the current stage live.
+2. **Log in once in the agent's browser** to LinkedIn and YC Work at a Startup. The wizard opens it for you, and the app's Settings has a button too. These sessions live only in JobAgent's own browser profile.
+3. **Open the JobAgent app** from the Start menu / launcher / desktop (or run `jobagent`). It opens in its own window with a short guided tour.
+4. **Press Run pipeline now** (top right) for the first sweep. The activity chip next to it shows the current stage; click it for every stage and the live log.
 5. **Teach it your voice.** Go to **My voice** and paste 3–5 messages you really sent. Drafts will sound like you from then on.
 6. **Each day:**
    - Open **Today**.
@@ -115,6 +115,7 @@ One **run** of the pipeline (the schedule runs it at your chosen times; you can 
 | # | Step | Model? | What happens |
 |---|---|---|---|
 | 1 | Inbox | yes | Links and texts you pasted are read and judged first. |
+| 1b | **Refresh** | no (rebuilds use a model) | Everything you are working on is brought up to date: picks, packets and watchlist postings are re-checked (closed postings and roles that turn out not to fit are marked), and referral plans that are outdated (an `UNVERIFIED` tag from older versions, no real profile links, or older than 21 days) are flagged in My picks and rebuilt a few per run. `jobagent refresh` runs it on its own. |
 | 2 | Poll | no | About 150 company boards (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Workday tenants, Eightfold), official career sites (Google, Microsoft, Amazon, NVIDIA, …), YC, Hacker News, VC portfolio boards, GitHub new-grad lists. Duplicates are merged: aggregator copies and identical re-posts are hidden, and the copy you worked on is always kept. |
 | 3 | Score | no | Role family, level, location realism (home, remote, relocate), visa clarity, your learned preferences. |
 | 4 | **Read full JDs** | no | The full posting is fetched (ATS APIs → page → your logged-in browser). Roles you don't qualify for are dropped **before** any model is paid to look at them (section 8). |
@@ -130,7 +131,15 @@ Prestige roles (frontier-lab fellowships, residencies, pre-docs, safety programs
 
 ## 4. The app (GUI)
 
-`jobagent gui` (or `start_gui.bat` on Windows). It runs on localhost only, has light and dark themes, works at phone width, and has a command palette (**Ctrl K** / **⌘ K**). The interface loads two typefaces from Google Fonts and falls back to system fonts offline.
+**Open it like any desktop app:** the JobAgent shortcut (Start menu, desktop, app launcher, `~/Applications`), `jobagent` / `jobagent app`, or `start_gui.bat`. It opens in **its own window** with its own icon in the taskbar or dock: no tabs, no address bar. The window is your installed Chrome, Edge or Chromium in app mode with a separate small profile, so nothing extra is downloaded and it never mixes with your normal browsing. Closing the window leaves the local server running for the scheduler; `jobagent shortcuts` re-creates the shortcuts. Prefer a browser tab? `jobagent gui` still opens `http://127.0.0.1:8777`, and Chrome/Edge can also install that page as an app (it has a web manifest).
+
+Everything runs on localhost only. The app has light and dark themes, works at phone width, and has a command palette (**Ctrl K** / **⌘ K**). Typefaces (Instrument Serif, Geist, Geist Mono) load from Google Fonts and fall back to system fonts offline.
+
+**Always visible, never in the way:**
+- **Activity chip** (top bar, next to *Run pipeline now*): idle, or what is running right now with a pulsing dot. Click it for the pipeline's stages (done / current / to come), every running task, and the latest log lines with times.
+- **Posting dates** on every job: *posted 3d ago* when the board gives a date, *posted ~2w ago* when it only shows an age (approximate), and *first seen 5d ago* when it gives nothing. Hover for the exact date and its source.
+- **Times** on every chat message, conversation, inbox item and model call (Usage & cost → *Latest calls*).
+- **Outdated material is flagged:** picks whose referral plan is outdated say *Referral plan outdated* with the reason and a **Rebuild plan** button (and an *Outdated* tab lists them). The job drawer warns when a posting looks closed.
 
 | View | What it is for |
 |---|---|
@@ -140,7 +149,7 @@ Prestige roles (frontier-lab fellowships, residencies, pre-docs, safety programs
 | **Ready to submit / Needs you** | Filled forms waiting for your Submit, and the exact fields that need you. |
 | **Watchlist / Programs** | Prestige roles and fellowships: deadlines, eligibility, referral state. |
 | **Inbox** | Paste links or texts you found anywhere. Each is processed, stored, and retried if a model was busy. |
-| **Ask the agent** | Chat plus slash commands (section 5). Ctrl K opens the same commands from anywhere. |
+| **Ask the agent** | Chat plus slash commands (section 5), in **separate conversations** (new, rename, delete), each with its own memory. Ctrl K opens the same commands from anywhere. |
 | **My voice** | Your real sent messages and your edits to drafts, so outreach sounds like you. |
 | **Usage & cost** | Calls and tokens per provider and task, today, this week and this month. |
 | **Settings** | Providers and which model does which job, schedule times, daily limits, budgets, notifications, local AI. |
@@ -158,6 +167,14 @@ Prestige roles (frontier-lab fellowships, residencies, pre-docs, safety programs
 | Today, light | Today, dark |
 |---|---|
 | ![Today](docs/img/gui-today.png) | ![Today in dark mode](docs/img/gui-today-dark.png) |
+
+**Conversations and activity:** a new chat for a new topic, switch back to an earlier one, and see what the agent is doing.
+
+![Conversations and the activity panel](docs/img/gif-conversations.gif)
+
+| My picks | Ask the agent |
+|---|---|
+| ![My picks](docs/img/gui-picks.png) | ![Ask the agent](docs/img/gui-chat.png) |
 
 | Inbox | Usage & cost |
 |---|---|
@@ -198,6 +215,8 @@ Add `force` to a job command to prepare a job the eligibility gate rejected (`/p
 - prepare packets and referral plans, search the web
 
 It plans first, keeps its context small by folding old tool results, works with any provider, and cannot submit applications or change settings.
+
+**Conversations and memory.** Each conversation has its own history. Older messages are folded into a running summary (written by the cheapest model) so a long conversation keeps its facts without growing the prompt, and every answer also gets the relevant jobs, plans, people and memory retrieved for that question. Links in answers are checked against what the agent actually saw, and anything it starts reports back to the conversation it came from.
 
 ---
 
@@ -289,6 +308,16 @@ If a form can't be read, a model-driven fill takes over; it's slower and costs m
 
 Each falls back to the other. The setup wizard proposes a mix for whatever you have installed.
 
+**The fallback chain is Claude → Antigravity → local model.** If Claude is unavailable or out of quota, Antigravity takes the task; if that is unavailable too, the local model does (when one is set up). Nothing waits for a specific provider: work keeps moving on whatever is available.
+
+**Any model, including a small local one, gets the same harness**, so the agent does not depend on a big model's instincts:
+- every tool has a schema, and calls are checked before they run: unknown tools get "did you mean", missing or mistyped arguments get a precise correction, and job ids are resolved from company or title words;
+- tools that change things (packet, referral plan, mark, …) run only when your goal asks for that kind of work, so "check my plans" can never quietly rebuild them; read-only tools (`picks_list` with `plan=outdated|current|none` and `packet=yes|no` filters, `get_plan`, `get_job`, `recall`) answer "what exists" questions;
+- worked examples of the right first call, the latest tool result kept in full (with a visible "N more characters" note, never a silent cut), repeated calls answered with the earlier result instead of an error, and a last-step reminder;
+- when a goal asks for a list and the model answers with a count, the items are attached verbatim from the tool output.
+
+`jobagent selftest [provider]` runs the real prompts of each task (triage, chat, agent step, ranking people, outreach, inbox extraction, chat summary) on one provider and checks that every output is valid and grounded. The local Qwen3.5-9B passes 7 of 7.
+
 ### Local AI (free, on your GPU)
 
 `jobagent local-setup`:
@@ -305,7 +334,7 @@ Each falls back to the other. The setup wizard proposes a mix for whatever you h
 | Less | Stay on hosted models |
 
 How it keeps the intelligence while running small:
-- **Thinking where it pays:** hybrid-thinking models reason step by step only for reflection, the daily plan and chat. Triage, ranking and extraction answer directly, because long reasoning on batch tasks burned the whole output budget without answering. If a reasoning run ever comes back empty, it is retried without thinking.
+- **Thinking where it pays:** hybrid-thinking models reason step by step only for reflection and the daily plan (chat answers in about 3 s without it). Triage, ranking and extraction answer directly, because long reasoning on batch tasks burned the whole output budget without answering. If a reasoning run ever comes back empty, it is retried without thinking.
 - **Valid JSON by construction:** structured tasks use llama.cpp's grammar-constrained decoding (an array or object schema matched to the prompt) at a low temperature, so malformed output is impossible and judgements stay consistent.
 - **A second opinion where it matters:** when the local model says SKIP on a job the rules score highly, your main hosted model takes one more look (a few per run). A small model never silently throws away a good opportunity.
 - **Quality gate:** the agreement benchmark must pass before routing changes, and `local-bench` lists every disagreement so you can see which way it errs.
@@ -358,7 +387,7 @@ Measured on an RTX 5060 Laptop (8 GB) with Qwen3.5-9B Q4_K_M:
     "local": {
       "model": "unsloth/Qwen3.5-9B-GGUF:Q4_K_M",
       "ctx": 32768, "max_tokens": 6144, "max_tokens_thinking": 4096,
-      "thinking_kinds": ["reflect", "today", "chat"],
+      "thinking_kinds": ["reflect", "today"],
       "second_opinion_min_score": 66, "second_opinion_max": 6,
       "keep_running": false, "autostart": true
     }
@@ -390,7 +419,8 @@ These apply to every model, hosted or local.
 | **Context rot** (long prompts, stale or irrelevant context) | Prompts carry the few items retrieved for the question (full-text search over jobs, plans, people, facts, memory), not dumps. The agent loop folds older tool results into short notes. A prompt that would exceed a model's context budget goes to a model whose window fits, so it is never silently truncated. |
 | **Broken tool calls** | Agent steps and structured tasks are JSON. On the local model they are grammar-constrained to a schema, so a malformed call can't happen. Unknown ids, verdicts or out-of-range scores are rejected or clamped. |
 | **Overconfident small model** | Batch tasks answer directly instead of thinking without end. The local model must agree with your main model at least 85% of the time before it gets work, and borderline skips get a hosted second opinion. |
-| **Quota exhaustion mid-task** | Background quality work waits for its own provider; interactive work falls back down the chain, ending at the local model. |
+| **Quota exhaustion mid-task** | Work falls back down the chain (Claude → Antigravity → local model). Set `llm.defer_in_background` to a list of tasks if you would rather have those wait for their own provider. |
+| **Stale data** | Every run re-checks the postings you are working on and flags outdated referral plans (section 3, step 1b); they are rebuilt a few per run and are marked in the app until then. |
 
 
 ## 11. Cost and quota control
@@ -401,7 +431,7 @@ These apply to every model, hosted or local.
 | Eligibility gate before triage | Jobs you can't get never reach a model. |
 | Deterministic browsing | LinkedIn: about 3k tokens per company instead of about 300k. Forms: about 6k instead of about 490k. |
 | Daily caps | 10 packets, 8 referral plans, 3 background LinkedIn scouts, 3 form fills (Settings). |
-| Background deferral | When a quality task's provider is busy or out of quota, background work **waits for the next run** instead of being done badly by a fallback. Your own requests still fall back. |
+| Optional background deferral | List tasks in `llm.defer_in_background` to make scheduled runs wait for their own provider instead of falling back. Off by default: Claude → Antigravity → local keeps work moving. |
 | Quota awareness | A provider that reports its limit is paused until the stated reset; a banner shows it. Background work keeps an allowance free for your own requests. |
 | Response cache | Deterministic tasks (triage of an unchanged job, ranking the same people, browsing steps) are answered from cache. |
 | Retrieval instead of dumps | Chat and the agent get the 8–10 most relevant items (SQLite full-text search over jobs, plans, people, facts, memory) instead of whole snapshots. |
@@ -421,12 +451,13 @@ These apply to every model, hosted or local.
 | Command | What it does |
 |---|---|
 | `init [--reconfigure] [--defaults]` · `doctor` | Setup wizard · check everything. |
-| `gui [--no-open]` | The app. |
+| `app` · `shortcuts` · `gui [--no-open]` | The app in its own window · add Start menu/desktop/launcher shortcuts · the app in a browser tab. |
 | `cycle` · `poll` · `triage` · `scout` | Full run · single stages. |
 | `top [n]` · `status` · `watch` · `usage` | What to look at · counts · watchlist · model usage. |
 | `packet <id>` · `referral <id>` · `linkedin <id>` · `resume <id>` · `fill <id>` | Prepare · plan contacts · LinkedIn scouting · resume advice · fill (never submits). Add `--force` to override the eligibility gate. |
 | `connections [picks\|needs-you\|"A, B"]` | Who you know at each company (LinkedIn, read-only, no model cost). |
-| `audit` | Re-check picks, packets and the watchlist against full job descriptions. |
+| `audit` · `refresh [--no-plans]` | Re-check picks, packets and the watchlist against full job descriptions · re-check postings and flag/rebuild outdated referral plans. |
+| `selftest [provider]` | Run every task's real prompt on one provider and check the outputs (default: local). |
 | `mark <id> applied\|skip\|dismissed [reason]` | Record an outcome; reasons teach the agent. |
 | `inbox [add "<text>" "<context>"]` · `inbox retry` · `chat "<message or /command>"` · `agent "<goal>"` | Your own finds · retry waiting items · chat · multi-step goals. |
 | `picks` | Add earlier hand-prepared jobs to My picks. |
@@ -454,7 +485,7 @@ Edit settings in the GUI (**Settings**) or in `<workspace>/config/settings.json`
 | `llm.routing.<task>` | Provider, model and effort per task (`triage, ingest, chat, packet, outreach, resume, referral, scout, today, reflect, fill, linkedin, yc, rank, browse`). |
 | `llm.fallbacks` | Order to try when a provider is unavailable. |
 | `llm.budgets.<provider>` | Daily call/token caps; `background_calls_per_5h` keeps room for your own requests. |
-| `llm.defer_in_background` | Tasks that wait instead of falling back during scheduled runs. |
+| `llm.defer_in_background` | Tasks that wait instead of falling back during scheduled runs (default: none). |
 | `llm.cache_hours.<task>` | Response-cache lifetime per task. |
 | `llm.local` | Local model (`model`, `autostart`). |
 | `jd_gate.max_yoe` | The most required years that still counts as eligible (default 1). |
@@ -523,5 +554,6 @@ Anything left empty in `form_defaults` is never guessed: it shows up under **Nee
   - Design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Tests:** `python -m unittest discover -s tests` runs against a throwaway workspace. CI runs them on Ubuntu, macOS and Windows.
 - **Demo data:** `python tools/make_demo.py <folder>` builds a workspace with fictional companies and people. Open it with `JOBAGENT_HOME=<folder> python agent/run.py gui`.
+- **Images:** `tools/screenshots.py` and `tools/record_gifs.py` (against the demo workspace) regenerate the README images; `tools/make_icons.py` renders the app icons from the logo.
 - **Images in this README:** come from the demo. Run `tools/screenshots.py` and `tools/record_gifs.py --url <gui url>`; these need Pillow, `python -m pip install pillow`.
 - **Publishing a copy:** the tree contains no personal data, but the git history of a personal fork may. Start a fresh history before making a copy public, and never commit a workspace.

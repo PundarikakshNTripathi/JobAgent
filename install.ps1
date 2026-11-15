@@ -68,11 +68,13 @@ if (-not $env:JOBAGENT_HOME -and -not (Test-Path ".jobagent_home")) {
 # 6. Launcher: `jobagent <command>`
 $Bin = Join-Path $env:USERPROFILE ".jobagent\bin"
 New-Item -ItemType Directory -Force $Bin | Out-Null
-Set-Content -Path (Join-Path $Bin "jobagent.cmd") -Encoding ascii -Value "@echo off`r`nif `"%~1`"==`"`" (`"$VPy`" `"$App\agent\run.py`" gui) else (`"$VPy`" `"$App\agent\run.py`" %*)"
+Set-Content -Path (Join-Path $Bin "jobagent.cmd") -Encoding ascii -Value "@echo off`r`nif `"%~1`"==`"`" (`"$VPy`" `"$App\agent\run.py`" app) else (`"$VPy`" `"$App\agent\run.py`" %*)"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$Bin*") { [Environment]::SetEnvironmentVariable("Path", "$userPath;$Bin", "User"); $env:Path += ";$Bin" }
 # 7. Guided setup
 Say "Setup"
 if ($Defaults) { & $VPy agent\run.py init --defaults } else { & $VPy agent\run.py init }
 & $VPy agent\run.py doctor
-Say "Done. Start the app with:  jobagent gui   (new terminals pick up the 'jobagent' command)"
+# 8. Desktop app: Start menu + desktop shortcut that opens JobAgent in its own window
+& $VPy agent\run.py shortcuts
+Say "Done. Open JobAgent from the Start menu or the desktop, or run:  jobagent   (new terminals pick up the 'jobagent' command)"

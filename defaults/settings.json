@@ -138,6 +138,11 @@
         "provider": "auto",
         "model": "",
         "effort": "low"
+      },
+      "summary": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
       }
     },
     "fallbacks": [
@@ -148,14 +153,7 @@
       "local"
     ],
     "budgets": {},
-    "defer_in_background": [
-      "packet",
-      "outreach",
-      "resume",
-      "fill",
-      "linkedin",
-      "rank"
-    ],
+    "defer_in_background": [],
     "cache_hours": {
       "triage": 720,
       "rank": 72,
@@ -170,8 +168,7 @@
       "keep_running": false,
       "thinking_kinds": [
         "reflect",
-        "today",
-        "chat"
+        "today"
       ],
       "max_tokens_thinking": 4096,
       "json_kinds": [
@@ -268,5 +265,12 @@
   "schedule_times": [
     "09:00",
     "18:00"
-  ]
+  ],
+  "maintenance": {
+    "recheck_days": 3,
+    "jd_rechecks_per_run": 40,
+    "referral_max_age_days": 21,
+    "referral_refresh_per_run": 6,
+    "time_box_s": 600
+  }
 }

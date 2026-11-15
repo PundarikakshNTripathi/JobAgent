@@ -20,7 +20,8 @@ FETCHED PAGE TEXT FOR LINKS IN THE MATERIAL:
 
 Extract every distinct opportunity (job, internship, fellowship, pre-doc, residency, program, or a person/lead worth contacting). Return ONLY a JSON array:
 [{{"company":"","title":"","url":"best direct link or ''","location":"","deadline":"","kind":"job|program|lead","description":"what the role needs and offers, up to 1200 chars, only from the material","user_note":"anything the user said about this item (why they like it, who told them, constraints)"}}]
-If the material is a question or has no opportunity, return []."""
+A hiring post, a job link, a role description or a program announcement IS an opportunity: always extract it. Return [] only when the
+material contains no role, program or person at all (for example a plain question)."""
 
 
 def _tier(company):
@@ -169,48 +170,65 @@ def summary(limit=12):
     return "\n".join(out)
 
 
-# ------------------------------------------------------------------ chat
+# ------------------------------------------------------------------ chat (several threads; memory = recent turns + rolling summary + long-term memory + retrieval)
 CHAT = """{ctx}
 
 You are JobAgent, the user's job-search agent. Answer like a sharp, honest friend who knows the pipeline: short, concrete, no fluff, no flattery.
-You DO things by ending your reply with ACTION lines, one per action. The system runs each one the moment you send the reply and posts the result into this chat when it finishes, so:
- - If the user asks you to do something, emit the ACTION for it. Never say you will do it, or that a button will appear, without the ACTION line; never claim a result you have not seen.
+You DO things by listing actions. The system runs each action the moment you reply and posts the result into this chat when it finishes, so:
+ - If the user asks you to do something, include the action for it. Never say you will do it without the action; never claim a result you have not seen.
  - Do exactly what was asked, for exactly the job(s) named. Do not substitute generic advice for an action. Do not add actions that were not asked for.
- - <target> is a job id from the snapshot, OR company/title words (e.g. "datadog applied science"); the system resolves it and asks the user if it is ambiguous.
-  ACTION: packet <target>          cover letter, answers, tailored resume
-  ACTION: referral <target>        who to approach + drafted messages (LinkedIn if allowed, else public web)
-  ACTION: linkedin <target>        read-only scouting of LinkedIn in the user's logged-in agent browser: real people (names, profile links), 1st/2nd degree, how to approach
-  ACTION: connections <picks | needs-you | company, company>   who the user knows at each company, read from LinkedIn in their logged-in browser (use this for
-                                   "check my connections / who do I know at X / people at my picks"; do NOT hand such requests to the agent loop)
-  ACTION: resume <target>          resume tailoring advice
-  ACTION: fill <target>            fill the form in the agent browser (never submits); only when the user asked to fill
-  ACTION: mark <target> applied|skip|dismissed [reason]     only when the user said so
-  ACTION: scout | today | poll | yc-profile | retry-inbox    run that job
-  ACTION: remember <fact about the user or a preference>
-  ACTION: ingest <text or link the user gave>
-  ACTION: agent <goal>             a multi-step goal for the autonomous agent loop (use for research that needs several steps)
-At most 4 actions. Never submit an application. The user can also type slash commands (/help lists them); mention one only if it is the better tool.
-For read-only questions (top matches, status, what is in the inbox) just answer from the snapshot.
+ - Use only facts from the sections below. If something is not there, say you don't know or start an action that finds out. Never invent names, links,
+   numbers or job ids.
+ - <target> is a job id from the snapshot, OR company/title words (e.g. "datadog applied science"); the system resolves it.
+ACTION KINDS (kind: arg)
+  packet: <target>          cover letter, answers, tailored resume
+  referral: <target>        who to approach + drafted messages (LinkedIn if allowed, else public web)
+  linkedin: <target>        read-only scouting of LinkedIn in the user's logged-in browser: real people, profile links, how to approach
+  connections: <picks | needs-you | company, company>   who the user knows at each company (use for "who do I know at X")
+  resume: <target>          resume tailoring advice
+  fill: <target>            fill the form in the agent browser (never submits); only when the user asked to fill
+  mark: <target> applied|skip|dismissed [reason]     only when the user said so
+  scout | today | poll | yc-profile | retry-inbox: (no arg)
+  remember: <fact about the user or a preference>
+  ingest: <text or link the user gave>
+  agent: <goal>             a multi-step goal for the autonomous agent loop (research that needs several steps)
+At most 4 actions. Never submit an application. Read-only questions (top matches, status, inbox) need no action: answer from the snapshot.
 
 PIPELINE SNAPSHOT
 {snapshot}
 
-RETRIEVED FOR THIS MESSAGE (jobs, plans, people seen on LinkedIn, profile facts, memory; use these ids and facts)
+RETRIEVED FOR THIS MESSAGE (jobs, plans, people seen on LinkedIn, profile facts, memory, earlier chats; use these ids and facts)
 {retrieved}
 
-RECENT CHAT
+EARLIER IN THIS CONVERSATION (summary)
+{summary}
+
+RECENT MESSAGES
 {history}
 
 USER: {text}
-JOBAGENT:"""
+
+Reply with ONE JSON object and nothing else:
+{{"reply": "your answer to the user", "actions": [{{"kind": "packet", "arg": "datadog applied science"}}]}}   (actions may be [])"""
 
 ALLOWED_ACTIONS = ("packet", "referral", "linkedin", "connections", "resume", "fill", "mark", "remember", "ingest", "agent", "retry-inbox", "scout", "today", "poll", "yc-profile")
+SUMMARY = """Summarise the older part of a conversation between a user and their job-search assistant, for the assistant's own memory.
+Keep only facts that were actually said: decisions, preferences, jobs and companies discussed (with ids), people named, actions started and their results,
+open questions. No advice, no new facts, no guesses. At most 12 short lines.
+
+PREVIOUS SUMMARY
+{prev}
+
+MESSAGES TO ADD
+{msgs}
+
+Return ONLY JSON: {{"summary": "..."}}"""
 
 
 def snapshot():
     c = db()
     top = c.execute("""SELECT j.id,j.company,j.title,j.location,t.fit,t.verdict,j.status FROM jobs j LEFT JOIN triage t ON t.job_id=j.id
-                       WHERE j.active=1 AND j.status NOT IN ('skipped','applied','ineligible') ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 12""").fetchall()
+                       WHERE j.active=1 AND j.status NOT IN ('skipped','applied','ineligible','dismissed','closed','duplicate') ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 12""").fetchall()
     watch = c.execute("SELECT j.id,j.company,j.title FROM watch w JOIN jobs j ON j.id=w.job_id WHERE j.status='watch' LIMIT 8").fetchall()
     lines = ["TOP MATCHES: " + "; ".join(f"[{r['id']}] {r['company']} - {r['title'][:50]} ({r['verdict'] or 'untriaged'} {int(r['fit'] or 0)}, {r['status']})" for r in top)]
     lines.append(summary())
@@ -218,20 +236,111 @@ def snapshot():
     return "\n".join(lines)
 
 
-def reply(text):
-    import chatcmd
+# ---- threads
+def ensure_threads():
     c = db()
-    c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "user", text))
+    if not c.execute("SELECT 1 FROM threads WHERE id=1").fetchone():
+        c.execute("INSERT INTO threads(id,title,created,updated) VALUES(1,'First conversation',?,?)", (now(), now()))
+        c.commit()
+
+
+def new_thread(title="New chat"):
+    ensure_threads()
+    c = db()
+    cur = c.execute("INSERT INTO threads(title,created,updated) VALUES(?,?,?)", (title[:80], now(), now()))
     c.commit()
+    return cur.lastrowid
+
+
+def list_threads():
+    ensure_threads()
+    return [dict(r) for r in db().execute("""SELECT t.id, t.title, t.updated, (SELECT COUNT(*) FROM chat m WHERE m.thread=t.id AND m.role IN ('user','agent')) n
+                                             FROM threads t ORDER BY t.updated DESC""").fetchall()]
+
+
+def rename_thread(tid, title):
+    c = db()
+    c.execute("UPDATE threads SET title=? WHERE id=?", (title[:80], tid))
+    c.commit()
+
+
+def delete_thread(tid):
+    c = db()
+    c.execute("DELETE FROM chat WHERE thread=?", (tid,))
+    c.execute("DELETE FROM threads WHERE id=?", (tid,))
+    c.commit()
+    ensure_threads()
+
+
+def say(role, text, thread=1):
+    c = db()
+    c.execute("INSERT INTO chat(ts,role,text,thread) VALUES(?,?,?,?)", (now(), role, text, thread))
+    c.execute("UPDATE threads SET updated=? WHERE id=?", (now(), thread))
+    c.commit()
+
+
+def _roll_summary(thread, keep=8):
+    """Messages older than the last `keep` are folded into the thread's summary (facts only), so long chats stay small and don't drift."""
+    c = db()
+    t = c.execute("SELECT summary, summarized_upto FROM threads WHERE id=?", (thread,)).fetchone()
+    rows = c.execute("SELECT id, role, text FROM chat WHERE thread=? AND role IN ('user','agent') AND id>? ORDER BY id", (thread, t["summarized_upto"] or 0)).fetchall()
+    if len(rows) <= keep + 4:
+        return t["summary"] or ""
+    old = rows[:-keep]
+    msgs = "\n".join(f"{r['role'].upper()}: {r['text'][:700]}" for r in old)
+    try:
+        out, _ = run(SUMMARY.format(prev=t["summary"] or "(none)", msgs=msgs), kind="summary", timeout=180, max_turns=1)
+        new = str(extract_json(out).get("summary", "")).strip()[:2500]
+    except Exception as e:
+        log(f"chat summary skipped: {e}")
+        return t["summary"] or ""
+    c.execute("UPDATE threads SET summary=?, summarized_upto=? WHERE id=?", (new, old[-1]["id"], thread))
+    c.commit()
+    return new
+
+
+def _parse(out):
+    """{reply, actions} from the model; accepts the JSON object or the older 'ACTION: kind arg' lines."""
+    try:
+        d = extract_json(out)
+        if isinstance(d, dict) and "reply" in d:
+            acts = []
+            for a in d.get("actions") or []:
+                if isinstance(a, dict) and str(a.get("kind", "")).strip() in ALLOWED_ACTIONS:
+                    acts.append((str(a["kind"]).strip(), str(a.get("arg", "")).strip()))
+            return str(d["reply"]).strip(), acts
+    except ValueError:
+        pass
+    acts, body = [], []
+    for ln in out.splitlines():
+        m = re.match(r"\s*ACTION:\s*([\w-]+)\s*(.*)", ln)
+        if m and m.group(1) in ALLOWED_ACTIONS:
+            acts.append((m.group(1), m.group(2).strip()))
+        else:
+            body.append(ln)
+    return "\n".join(body).strip(), acts
+
+
+def reply(text, thread=1):
+    import chatcmd
+    ensure_threads()
+    c = db()
+    if not c.execute("SELECT 1 FROM threads WHERE id=?", (thread,)).fetchone():
+        thread = new_thread()
+    first = c.execute("SELECT COUNT(*) FROM chat WHERE thread=? AND role='user'", (thread,)).fetchone()[0] == 0
+    say("user", text, thread)
+    if first and c.execute("SELECT title FROM threads WHERE id=?", (thread,)).fetchone()[0] in ("New chat", ""):
+        rename_thread(thread, re.sub(r"\s+", " ", text).strip()[:48])
     if text.lstrip().startswith("/"):  # slash commands never touch the model: instant, exact, work even when every provider is out of quota
         try:
-            answer = chatcmd.run_slash(text)
+            answer = chatcmd.run_slash(text, thread=thread)
         except Exception as e:
             answer = f"That command failed: {e}"
-        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "agent", answer))
-        c.commit()
+        say("agent", answer, thread)
         return answer, []
-    hist = "\n".join(f"{r['role'].upper()}: {r['text'][:600]}" for r in reversed(c.execute("SELECT role,text FROM chat WHERE role!='proposal' ORDER BY id DESC LIMIT 7").fetchall()[1:]))
+    recent = c.execute("SELECT role,text FROM chat WHERE thread=? AND role IN ('user','agent') ORDER BY id DESC LIMIT 9", (thread,)).fetchall()[1:]
+    hist = "\n".join(f"{r['role'].upper()}: {r['text'][:700]}" for r in reversed(recent))
+    summ = _roll_summary(thread)
     try:
         try:
             import rag
@@ -239,29 +348,21 @@ def reply(text):
             retrieved = rag.context(text, k=10, max_chars=3500) or "(nothing specific)"
         except Exception as e:
             retrieved = f"(retrieval unavailable: {e})"
-        out, _ = run(CHAT.format(ctx=memory.context_pack(), snapshot=snapshot(), retrieved=retrieved, history=hist or "(start)", text=text), kind="chat", timeout=240, max_turns=2)
+        snap = snapshot()
+        out, _ = run(CHAT.format(ctx=memory.context_pack(), snapshot=snap, retrieved=retrieved, summary=summ or "(nothing yet)", history=hist or "(start)",
+                                 text=text), kind="chat", timeout=240, max_turns=2)
     except Exception as e:
         answer = f"I cannot think right now ({str(e)[:220]}). Slash commands still work without a model, e.g. /top, /jobs datadog, /packet <id>, /linkedin <id>, /usage. Type /help."
-        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "agent", answer))
-        c.commit()
+        say("agent", answer, thread)
         return answer, []
-    actions, body = [], []
-    for ln in out.splitlines():
-        m = re.match(r"\s*ACTION:\s*([\w-]+)\s*(.*)", ln)
-        if m and m.group(1) in ALLOWED_ACTIONS:
-            actions.append((m.group(1), m.group(2).strip()))
-        else:
-            body.append(ln)
-    answer = "\n".join(body).strip()
+    answer, actions = _parse(out)
     import grounding
-    answer, _ = grounding.strip_unseen_urls(answer, "\n".join([snapshot(), retrieved, hist, text]))
-    done, props = chatcmd.execute_nl_actions(text, actions[:4])
+    answer, _ = grounding.strip_unseen_urls(answer, "\n".join([snap, retrieved, summ, hist, text, memory.context_pack()]))
+    done, props = chatcmd.execute_nl_actions(text, actions[:4], thread=thread)
     if done:
         answer += "\n\nStarted:\n" + "\n".join("- " + d for d in done)
-    c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "agent", answer))
-    c.commit()
+    say("agent", answer or "(no answer)", thread)
     # state-changing / form-filling actions the user did not ask for in words stay as confirm buttons
     if props:
-        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "proposal", json.dumps(props)))
-        c.commit()
+        say("proposal", json.dumps(props), thread)
     return answer, props

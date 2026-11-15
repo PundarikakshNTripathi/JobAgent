@@ -41,25 +41,90 @@ def _registrable(host):
     return ".".join(parts[-2:])
 
 
+# job-board hosts: their favicon is the board's, never the employer's
+ATS_HOSTS = ATS_HOSTS + ("applytojob.com", "jazzhr.com", "breezy.hr", "recruitee.com", "personio.de", "personio.com", "zohorecruit.com", "freshteam.com",
+                         "ashbyhq.com", "dover.com", "wellfound.com", "angel.co", "rippling.com", "paylocity.com", "ultipro.com", "ukg.com", "oraclecloud.com",
+                         "successfactors.com", "successfactors.eu", "jobvite.com", "workable.com", "pinpointhq.com", "trakstar.com", "comeet.com", "hire.trakstar.com",
+                         "lifeattiktok.com", "metacareers.com", "careers.google.com", "naukri.com", "instahyre.com", "cutshort.io", "talent.com", "glassdoor.com",
+                         "indeed.com", "simplify.jobs", "otta.com", "builtin.com", "remoteok.com", "remotive.com", "weworkremotely.com")
+_BOARD = [  # (host regex, path regex): where the employer's own slug lives in a job-board URL
+    (r"(?:job-)?boards(?:-api)?\.greenhouse\.io$", r"^/(?:embed/job_app\?for=)?([\w-]+)"), (r"jobs\.ashbyhq\.com$", r"^/([\w.-]+)"), (r"jobs\.(?:eu\.)?lever\.co$", r"^/([\w-]+)"),
+    (r"apply\.workable\.com$", r"^/([\w-]+)"), (r"jobs\.smartrecruiters\.com$", r"^/([\w-]+)"), (r"^([\w-]+)\.wd\d+\.myworkdayjobs\.com$", None),
+    (r"^([\w-]+)\.(?:applytojob|breezy|recruitee|bamboohr|teamtailor|jobs\.personio)\.(?:com|hr|de)$", None), (r"^careers-([\w-]+)\.icims\.com$", None),
+]
+
+
+def board_slug(url):
+    """The employer's slug on a job board ('hookmusic' in jobs.ashbyhq.com/hookmusic/...), or ''."""
+    u = urllib.parse.urlparse(url or "")
+    host = u.netloc.lower().split(":")[0]
+    for hrx, prx in _BOARD:
+        m = re.search(hrx, host)
+        if m:
+            if prx is None:
+                return m.group(1).lower()
+            m2 = re.search(prx, u.path + ("?" + u.query if u.query else ""))
+            return m2.group(1).lower() if m2 else ""
+    return ""
+
+
+def _known(company):
+    """KNOWN by full name, by the name without suffixes, or by each part of a 'Parent / Unit' style name."""
+    base = _SUFFIX.sub("", company or "").strip().lower()
+    for k in [(company or "").lower().strip(), base] + [x.strip() for x in re.split(r"[/|,]", base) if x.strip()]:
+        if k in KNOWN:
+            return KNOWN[k]
+    return ""
+
+
 def candidates(company, url=""):
+    """[(domain, trusted)] best first. Trusted: stated by a feed, known, or the employer's own job-page host. Untrusted guesses (slug.com ...)
+    are only used if the site's own title names the company (see _plausible)."""
     base = _SUFFIX.sub("", company or "").strip()
     out = []
-    k = KNOWN.get((company or "").lower().strip()) or KNOWN.get(base.lower())
+    dom, _ = _meta(company)
+    if dom:
+        out.append((_registrable(dom), True))
+    k = _known(company)
     if k:
-        out.append(k)
-    if url:
-        host = urllib.parse.urlparse(url).netloc.split(":")[0]
-        if host and not any(host.endswith(h) for h in ATS_HOSTS):
-            out.append(_registrable(host))
-    s = _slug(base)
-    if s:
-        out += [s + ".com", s + ".ai", s + ".io", s + ".co", s + ".org"]
+        out.append((k, True))
+    host = urllib.parse.urlparse(url or "").netloc.lower().split(":")[0]
+    if host and not any(host == h or host.endswith("." + h) for h in ATS_HOSTS):
+        out.append((_registrable(host), True))
+    s, b = _slug(base), _slug(board_slug(url))
+    guesses = []
+    if b and b != s:
+        guesses += [b + t for t in (".com", ".ai", ".co", ".io")]
+    if s and not (b and b != s and not b.startswith(s)):  # 'hookmusic' on the board: don't guess plain hook.com
+        guesses += [s + t for t in (".com", ".ai", ".io", ".co", ".org")]
+    out += [(g, False) for g in guesses]
     seen, res = set(), []
-    for d in out:
+    for d, t in out:
         if d not in seen:
             seen.add(d)
-            res.append(d)
-    return res[:6]
+            res.append((d, t))
+    return res[:8]
+
+
+_VERIFY = {}
+
+
+def _plausible(domain, company, url=""):
+    """A guessed domain counts only if its home page's title or site name names the company (or the job board's slug for it)."""
+    if domain in _VERIFY:
+        return _VERIFY[domain]
+    try:
+        body = _get("https://" + domain)[:200000].decode("utf-8", "replace")
+    except Exception:
+        _VERIFY[domain] = None  # unreachable: unknown, not a verdict
+        return None
+    title = " ".join(re.findall(r"(?is)<title[^>]*>(.*?)</title>|property=[\"']og:site_name[\"'][^>]*content=[\"']([^\"']+)", body).__str__().split())
+    t = _slug(title)
+    names = {_slug(_SUFFIX.sub("", company or "")), _slug(board_slug(url))} - {""}
+    words = {w for w in re.findall(r"[a-z0-9]+", _SUFFIX.sub("", company or "").lower()) if len(w) >= 4}
+    ok = any(n in t for n in names) or (bool(words) and all(w in t for w in words))
+    _VERIFY[domain] = ok
+    return ok
 
 
 def _get(u):
@@ -106,25 +171,71 @@ def _icon(domain):
     return None
 
 
+def _meta(company):
+    """Website domain / official logo URL that a feed stated for this company (company_meta table), if any."""
+    try:
+        from common import db, company_key
+        r = db().execute("SELECT domain, logo_url FROM company_meta WHERE k=?", (company_key(company),)).fetchone()
+        return (r["domain"] or "", r["logo_url"] or "") if r else ("", "")
+    except Exception:
+        return "", ""
+
+
+def _key(company):
+    return _slug(_SUFFIX.sub("", company or "")) or "x"
+
+
+def forget(company):
+    """Drop the cached logo (and the cached miss) so the next request resolves it again."""
+    for ext in (".img", ".miss"):
+        try:
+            os.remove(os.path.join(CACHE, _key(company) + ext))
+        except OSError:
+            pass
+
+
+_locks = {}
+
+
 def logo_for(company, url=""):
-    """Return (bytes, content_type) or None. Cached on disk (positive and negative)."""
+    """Return (bytes, content_type) or None. Cached on disk. A miss is cached only when every lookup answered (a network failure is not
+    a 'no logo'), and for one day."""
     if not SETTINGS.get("ui", {}).get("logos", True) or not company:
         return None
-    key = _slug(_SUFFIX.sub("", company)) or "x"
+    key = _key(company)
     img, none = os.path.join(CACHE, key + ".img"), os.path.join(CACHE, key + ".miss")
     if os.path.exists(img):
         b = open(img, "rb").read()
         return b, sniff(b)
-    if os.path.exists(none) and time.time() - os.path.getmtime(none) < 7 * 86400:
+    if os.path.exists(none) and time.time() - os.path.getmtime(none) < 86400:
         return None
     with _lock:
+        lk = _locks.setdefault(key, threading.Lock())
+    with lk:  # one resolver per company; different companies resolve in parallel
         if os.path.exists(img):
             b = open(img, "rb").read()
             return b, sniff(b)
-        for d in candidates(company, url):
+        _, official = _meta(company)
+        if official:  # the company's own logo as published by the job board (e.g. YC)
+            try:
+                b = _get(official)
+                if len(b) > 200:
+                    open(img, "wb").write(b)
+                    return b, sniff(b)
+            except Exception:
+                pass
+        unsure = False
+        for d, trusted in candidates(company, url):
+            if not trusted:
+                v = _plausible(d, company, url)
+                if v is None:
+                    unsure = True
+                if not v:
+                    continue
             b = _icon(d)
             if b:
                 open(img, "wb").write(b)
                 return b, sniff(b)
-        open(none, "w").write("none")
+        if not unsure:
+            open(none, "w").write("none")
     return None

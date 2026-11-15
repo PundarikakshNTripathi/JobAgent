@@ -10,7 +10,7 @@ args = ap.parse_args()
 MASK = """() => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n;
   while ((n = w.nextNode())) n.nodeValue = n.nodeValue.replace(/[A-Z]:\\\\[^\\s]*?(demo-ws|JobAgent[-\\w]*)/g, '~/JobAgent').replace(/\\/(home|Users)\\/[^\\s/]+\\/[^\\s]*/g, '~/JobAgent') }"""
 SHOTS = [("gui-today.png", "today", "light", None), ("gui-today-dark.png", "today", "dark", None), ("gui-usage.png", "usage", "light", None),
-         ("gui-inbox.png", "inbox", "light", None), ("gui-settings.png", "settings", "light", "#s-times")]
+         ("gui-inbox.png", "inbox", "light", None), ("gui-settings.png", "settings", "light", "#s-times"), ("gui-chat.png", "chat", "light", None), ("gui-picks.png", "picks", "light", None)]
 with sync_playwright() as p:
     b = p.chromium.launch(channel="chrome", headless=True)
     for name, view, theme, anchor in SHOTS:

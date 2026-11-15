@@ -80,7 +80,7 @@ fi
 mkdir -p "$HOME/.local/bin"
 cat > "$HOME/.local/bin/jobagent" <<EOF
 #!/usr/bin/env bash
-exec "$APP/.venv/bin/python" "$APP/agent/run.py" "\${@:-gui}"
+exec "$APP/.venv/bin/python" "$APP/agent/run.py" "\${@:-app}"
 EOF
 chmod +x "$HOME/.local/bin/jobagent"
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "Add ~/.local/bin to your PATH to use the 'jobagent' command (e.g. echo 'export PATH=\$HOME/.local/bin:\$PATH' >> ~/.bashrc)";; esac
@@ -88,4 +88,6 @@ case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "Add ~/.local/bin to your P
 say "Setup"
 if [ -n "$TTY" ]; then .venv/bin/python agent/run.py init < "$TTY"; else .venv/bin/python agent/run.py init --defaults; fi
 .venv/bin/python agent/run.py doctor || true
-say "Done. Start the app with:  jobagent gui      (or: $APP/.venv/bin/python $APP/agent/run.py gui)"
+# 8. Desktop app: app-launcher entry (Linux) or ~/Applications/JobAgent.app (macOS) that opens JobAgent in its own window
+.venv/bin/python agent/run.py shortcuts || warn "Could not add the app shortcut; open it with: jobagent app"
+say "Done. Open JobAgent from your app launcher, or run:  jobagent      (or: $APP/.venv/bin/python $APP/agent/run.py app)"

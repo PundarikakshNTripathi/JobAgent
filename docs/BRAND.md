@@ -38,24 +38,34 @@ A pine tile with a white **J** drawn as a path: it starts low at the left, sweep
 
 ## Colour
 
+Warm paper and ink, one accent. The page should read like a well-set document, not a dashboard template.
+
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| Ink | `#14201B` | `#E4ECE8` | text, primary surfaces in the chat |
-| Paper | `#F5F7F6` | `#0D1412` | page background |
-| Panel | `#FFFFFF` | `#131C19` | cards and lists |
-| Pine (accent) | `#1E6B58` | `#5FC2A5` | the one action colour: primary buttons, progress, fit gauges |
-| Amber | `#B7791F` / logo `#F2B84B` | `#E0A94A` | needs-you states and the logo's dot only |
-| Slate | `#5B6A64` | `#8B9B95` | secondary text |
+| Ink | `#1B1A16` | `#ECEBE5` | text, and the primary button (one per view) |
+| Paper | `#F3F1EC` | `#121110` | page background, with a faint grain |
+| Panel / Raise | `#FBFAF7` / `#FFFFFF` | `#191816` / `#1F1E1B` | lists, cards, popovers (hairline borders, no drop shadows on resting surfaces) |
+| Pine (accent) | `#2A6352` | `#7CBCA3` | progress, fit meters, the active item, "fresh" dates, positive status |
+| Marigold | `#9A5B09` text / `#D9A23E` dot | `#E3AC52` | needs-you and outdated states, and the logo's dot |
+| Stone | `#76726A` / faint `#A29E94` | `#8F8B81` / `#66635B` | secondary text, labels |
 
-There's one accent per screen. Colour on tags means status, never decoration.
+There's one accent per screen. Colour on tags means status, never decoration; neutral tags are hairline outlines with small radii.
 
 ## Type
-- **Bricolage Grotesque** (600/700) for page titles, the Today headline and the wordmark: characterful, set tight (−0.035em).
-- **Schibsted Grotesk** (400–700) for everything else. Tabular figures only where numbers line up (scores, counts, tables).
-- Fallbacks: Segoe UI Variable, system UI.
+- **Instrument Serif** for page titles, the Today headline, big numbers (fit, tiles) and the wordmark: the human voice of the app. Italic in the accent for the key phrase.
+- **Geist** (400–700) for the interface.
+- **Geist Mono** for times, ids, dates, counts in tables and small uppercase labels. Tabular figures wherever numbers line up.
+- Fallbacks: Iowan Old Style/Georgia, Segoe UI Variable, system UI, Cascadia Mono.
+
+## Motion
+- 150–350 ms with an ease-out curve (`cubic-bezier(.2,.8,.2,1)`); rows rise in with a short stagger; buttons press down 1 px.
+- A pulsing dot means "working right now" (the activity chip). Nothing else animates on its own.
+- `prefers-reduced-motion` turns all of it off.
 
 ## Product shape
 - **Today leads with the next action**, not a greeting.
 - **One primary button per view.** In the top bar it's "Run pipeline now".
 - **Ctrl K** reaches everything.
+- **The activity chip** says what the agent is doing without a toast or a modal; details are one click away.
+- **A desktop app**, not a tab: its own window and icon (`jobagent app`), icons rendered from the logo by `tools/make_icons.py`.
 - **GIFs and screenshots** come from the fictional demo workspace (`tools/make_demo.py`). Fictional companies have their own drawn logos (`tools/demo_logos.py`); a real company's logo never appears next to a made-up posting.

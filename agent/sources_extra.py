@@ -2,7 +2,7 @@
 YC (role pages, include visa + min-experience), Hacker News (job stories + monthly Who's Hiring),
 VC portfolio job boards (Getro-powered), Remotive, RemoteOK, speedyapply GitHub lists (AI + SWE college jobs)."""
 import datetime as dt, hashlib, html, json, re
-from common import http_get, http_json, log
+from common import http_get, http_json, log, approx_date
 
 TAGS = re.compile(r"<[^>]+>")
 
@@ -48,7 +48,9 @@ def yc_jobs():
                         f"Salary: {p.get('salaryRange')}. Equity: {p.get('equityRange')}.")
                 out.append({"id": f"yc:{p['id']}", "company": f"{p.get('companyName','?')} (YC {p.get('companyBatchName','')})",
                             "title": p.get("title", ""), "location": p.get("location", "") + (" | Remote" if "/remote" in loc else ""),
-                            "url": "https://www.ycombinator.com" + p.get("url", ""), "ats": "yc", "posted": "", "desc": desc,
+                            "url": "https://www.ycombinator.com" + p.get("url", ""), "ats": "yc", "desc": desc,
+                            "posted": approx_date(p.get("createdAt")) or "", "_posted_src": "age" if p.get("createdAt") else "",
+                            "_logo": p.get("companyLogoUrl") or "",
                             "_remote_ok": "/remote" in loc})
     return out
 
@@ -148,7 +150,7 @@ def remoteok():
 
 
 # ------------------------------------------------------------------ GitHub curated lists (speedyapply)
-ROW = re.compile(r'^\|\s*<a href="[^"]*"><strong>(?P<co>[^<]+)</strong></a>\s*\|\s*(?P<pos>[^|]+?)\s*\|\s*(?P<loc>[^|]*?)\s*\|(?:[^|]*\|)?\s*<a href="(?P<url>[^"]+)"', re.M)
+ROW = re.compile(r'^\|\s*<a href="(?P<site>[^"]*)"><strong>(?P<co>[^<]+)</strong></a>\s*\|\s*(?P<pos>[^|]+?)\s*\|\s*(?P<loc>[^|]*?)\s*\|(?:[^|]*\|)?\s*<a href="(?P<url>[^"]+)"[^|]*\|\s*(?P<age>[0-9]+\s*[a-z]+)?', re.M)
 
 
 def speedyapply():
@@ -166,5 +168,6 @@ def speedyapply():
                 seen.add(url)
                 out.append({"id": f"speedyapply-{label}:{hashlib.md5(url.encode()).hexdigest()[:14]}", "company": html.unescape(m.group("co")), "title": html.unescape(m.group("pos")),
                             "location": html.unescape(m.group("loc")), "url": url, "ats": "simplify-intern" if "INTERN" in fn or fn == "README.md" else "simplify-newgrad",
-                            "posted": "", "desc": f"Curated {label.upper()} college list ({fn}). Sponsorship: unknown."})
+                            "posted": approx_date(m.group("age")) or "", "_posted_src": "age" if m.group("age") else "",
+                            "_site": m.group("site"), "desc": f"Curated {label.upper()} college list ({fn}). Sponsorship: unknown."})
     return out

@@ -1,7 +1,7 @@
 """poll -> score -> store -> alert -> LLM triage."""
 import json, re
 import feeds, scoring, memory
-from common import (db, log, now, notify, meta_get, meta_set, run_claude, extract_json, SETTINGS, PROFILE,
+from common import (company_key as common_key, db, log, now, notify, meta_get, meta_set, run_claude, extract_json, SETTINGS, PROFILE,
                     budget_add, budget_used)
 
 
@@ -41,6 +41,36 @@ def dedupe():
     return hidden
 
 
+def _company_meta(c, j):
+    """Remember the company's own website or official logo when a feed states it (better than guessing a domain for the logo)."""
+    site, logo = (j.get("_site") or "").strip(), (j.get("_logo") or "").strip()
+    if not (site or logo):
+        return
+    import urllib.parse
+    host = urllib.parse.urlparse(site).netloc.lower().split(":")[0] if site else ""
+    host = host[4:] if host.startswith("www.") else host
+    k = common_key(j["company"])
+    old = c.execute("SELECT domain, logo_url FROM company_meta WHERE k=?", (k,)).fetchone()
+    if old and (old["domain"] or "") == host and (old["logo_url"] or "") == logo:
+        return
+    c.execute("INSERT OR REPLACE INTO company_meta(k,company,domain,logo_url,source,at) VALUES(?,?,?,?,?,?)",
+              (k, j["company"], host or (old["domain"] if old else ""), logo or (old["logo_url"] if old else ""), j["ats"], now()))
+    try:
+        import logos
+        logos.forget(j["company"])  # re-resolve with the better information
+    except Exception:
+        pass
+
+
+def backfill_posted():
+    """Jobs with no date at all get their first-seen date, marked as such (shown as 'first seen', not as a posting date)."""
+    c = db()
+    n = c.execute("UPDATE jobs SET posted=substr(first_seen,1,10), posted_src='seen' WHERE posted IS NULL OR posted=''").rowcount
+    c.execute("UPDATE jobs SET posted_src='feed' WHERE posted_src IS NULL AND posted IS NOT NULL AND posted!=''")
+    c.commit()
+    return n
+
+
 def poll():
     """Fetch every source, upsert jobs, return list of ids that are new AND pass the heuristic bar."""
     c = db()
@@ -64,15 +94,22 @@ def poll():
         s = scoring.score(j)
         if s["drop"]:
             continue
-        row = c.execute("SELECT id FROM jobs WHERE id=?", (j["id"],)).fetchone()
+        _company_meta(c, j)
+        posted, psrc = (j.get("posted") or "")[:10], (j.get("_posted_src") or ("feed" if j.get("posted") else ""))
+        row = c.execute("SELECT id, posted, posted_src FROM jobs WHERE id=?", (j["id"],)).fetchone()
         if row:
             c.execute("UPDATE jobs SET last_seen=?, active=1, score=?, loc_class=?, family=?, early=?, yoe=?, visa=? WHERE id=?",
                       (ts, s["score"], s["loc_class"], s["family"], s["early"], s["yoe"], s["visa"], j["id"]))
+            # a real date beats an age-derived one, which beats 'first seen'; an age-derived date is not moved later by re-polls
+            rank = {"feed": 3, "age": 2, "seen": 1, None: 0, "": 0}
+            if posted and rank.get(psrc, 0) > rank.get(row["posted_src"], 0):
+                c.execute("UPDATE jobs SET posted=?, posted_src=? WHERE id=?", (posted, psrc, j["id"]))
         else:
             c.execute("""INSERT INTO jobs(id,company,tier,category,title,location,url,ats,posted,first_seen,last_seen,score,loc_class,family,early,yoe,desc,baseline,visa)
                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                      (j["id"], j["company"], j.get("_tier", "C"), j.get("_cat", ""), j["title"], j["location"], j["url"], j["ats"], j["posted"],
+                      (j["id"], j["company"], j.get("_tier", "C"), j.get("_cat", ""), j["title"], j["location"], j["url"], j["ats"], posted or ts[:10],
                        ts, ts, s["score"], s["loc_class"], s["family"], s["early"], s["yoe"], j["desc"][:6000], 1 if first_run else 0, s["visa"]))
+            c.execute("UPDATE jobs SET posted_src=? WHERE id=?", (psrc if posted else "seen", j["id"]))
             if s["score"] >= SETTINGS["min_heuristic_score_for_llm"]:
                 new_ids.append(j["id"])
     # mark disappeared jobs only for sources that answered (avoid mass-deactivating on an outage)
@@ -87,6 +124,10 @@ def poll():
     meta_set(c, "last_poll", ts)
     if bad:
         log(f"WARNING failing sources: {list(bad)[:12]}")
+    try:
+        backfill_posted()
+    except Exception as e:
+        log(f"posted backfill failed: {e}")
     try:
         dedupe()
         live = {r[0] for r in c.execute("SELECT id FROM jobs WHERE active=1")}

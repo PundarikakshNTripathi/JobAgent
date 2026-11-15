@@ -124,6 +124,32 @@ def now():
     return dt.datetime.now().isoformat(timespec="seconds")
 
 
+def approx_date(age, ref=None):
+    """'2d', '3w', '1mo', '19 days', '2 hours', 'yesterday', '1 year' -> ISO date (approximate). None if unreadable."""
+    s = str(age or "").strip().lower()
+    if not s:
+        return None
+    if s in ("today", "just now", "new"):
+        n, unit = 0, "d"
+    elif s == "yesterday":
+        n, unit = 1, "d"
+    else:
+        m = re.match(r"(\d+)\s*\+?\s*(mo|months?|m(?!in)|w|weeks?|d|days?|h|hours?|hrs?|min|minutes?|y|years?)(?![a-z])", s)
+        if not m:
+            return None
+        n, unit = int(m.group(1)), m.group(2)
+    days = {"y": 365, "mo": 30, "m": 30, "w": 7, "d": 1, "h": 0, "min": 0}
+    key = next(k for k in ("min", "mo", "y", "w", "d", "h", "m") if unit.startswith(k))
+    base = ref or dt.date.today()
+    if isinstance(base, dt.datetime):  # a datetime reference would otherwise yield '...T00:00:00'
+        base = base.date()
+    return (base - dt.timedelta(days=n * days[key])).isoformat()
+
+
+def company_key(name):
+    return re.sub(r"[^a-z0-9]", "", re.sub(r"\(yc [a-z]\d+\)", "", (name or "").lower()))
+
+
 def log(msg):
     line = f"[{now()}] {msg}"
     try:
@@ -183,6 +209,8 @@ CREATE TABLE IF NOT EXISTS outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEX
 CREATE TABLE IF NOT EXISTS people(url TEXT PRIMARY KEY, company TEXT, name TEXT, headline TEXT, degree TEXT, mutual TEXT, location TEXT, about TEXT, source TEXT, seen_at TEXT);
 CREATE INDEX IF NOT EXISTS people_company ON people(company);
 CREATE TABLE IF NOT EXISTS llm_cache(k TEXT PRIMARY KEY, kind TEXT, text TEXT, at REAL);
+CREATE TABLE IF NOT EXISTS company_meta(k TEXT PRIMARY KEY, company TEXT, domain TEXT, logo_url TEXT, source TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS threads(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, created TEXT, updated TEXT, summary TEXT DEFAULT '', summarized_upto INTEGER DEFAULT 0);
 """
 
 
@@ -192,7 +220,8 @@ def db():
     c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA busy_timeout=90000")
     c.executescript(SCHEMA)
-    for tbl, col, typ in (("llm_log", "provider", "TEXT"), ("llm_log", "secs", "REAL"), ("jobs", "jd_full", "INTEGER DEFAULT 0"), ("jobs", "req", "TEXT")):
+    for tbl, col, typ in (("llm_log", "provider", "TEXT"), ("llm_log", "secs", "REAL"), ("jobs", "jd_full", "INTEGER DEFAULT 0"), ("jobs", "req", "TEXT"),
+                           ("jobs", "posted_src", "TEXT"), ("jobs", "checked", "TEXT"), ("chat", "thread", "INTEGER DEFAULT 1"), ("referrals", "stale", "TEXT")):
         try:  # forward-compatible migration of older workspaces
             c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}")
         except sqlite3.OperationalError:

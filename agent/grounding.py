@@ -34,9 +34,25 @@ def unsupported_numbers(text, sources):
     return sorted(set(out))
 
 
+def _canon(u):
+    """Compare links by host+path: scheme, 'www.', trailing slash, query and fragment don't make a link different."""
+    u = u.rstrip(".,;:").lower().split("#")[0].split("?")[0]
+    u = re.sub(r"^https?://(www\.)?", "", u)
+    return u.rstrip("/")
+
+
 def unseen_urls(text, seen_text):
-    seen = {u.rstrip(".,;:").lower() for u in _URL.findall(seen_text or "")}
-    return [u for u in {u.rstrip(".,;:") for u in _URL.findall(text or "")} if u.lower() not in seen and not any(s.startswith(u.lower()) or u.lower().startswith(s) for s in seen)]
+    """Links in `text` that never appeared in `seen_text`. A link counts as seen only when the same page appeared (ignoring query, fragment and
+    trailing slash), or when it is a shortened form of a seen link. A bare prefix that was seen (linkedin.com/in/) does not vouch for every
+    profile under it: that loophole let invented profile URLs through."""
+    seen = {_canon(u) for u in _URL.findall(seen_text or "")}
+    out = []
+    for u in {u.rstrip(".,;:") for u in _URL.findall(text or "")}:
+        c = _canon(u)
+        if c in seen or any(s.startswith(c + "/") for s in seen if "/" in c):
+            continue
+        out.append(u)
+    return out
 
 
 def strip_unseen_urls(text, seen_text, note=True):
