@@ -49,13 +49,16 @@ def state():
                         WHERE j.active=1 AND j.status NOT IN ('skipped','dismissed','ineligible') AND (j.status!='new' OR j.score>=65)
                         ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 1500""").fetchall()
     progs = c.execute("SELECT name,org,kind,window,eligibility,url FROM programs ORDER BY added DESC").fetchall()
-    with _lock:
-        running = [k for k, p in JOBS.items() if p.poll() is None] + (["chat"] if CHAT_BUSY["on"] else [])
+    import chatcmd, time as _t
+    running = [k for k, p in list(chatcmd.RUNNING.items()) if p.poll() is None] + (["chat"] if CHAT_BUSY["on"] else [])
+    lock = os.path.join(DATA, "cycle.lock")
+    if "cycle" not in running and os.path.exists(lock) and _t.time() - os.path.getmtime(lock) < 100 * 60:
+        running.append("cycle")  # a scheduled run is in progress
     tp = os.path.join(OUT, "today.md")
     return {"jobs": [dict(r) for r in rows], "programs": [dict(r) for r in progs], "last_poll": meta_get(c, "last_poll"), "setup_needed": common.needs_setup(),
             "active": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0], "running": running, "day": dt.date.today().isoformat(), "plan": jread("today.json", None),
             "budget": {k: budget_used(c, k) for k in ("triage_calls", "packets", "referrals", "fills", "scout", "linkedin")},
-            "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME, "cooldowns": cooldowns()}
+            "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME, "cooldowns": cooldowns(), "stage": (meta_get(c, "cycle_stage") or "|").split("|", 1)[1], "schedule": schedule_info()}
 
 
 def _csv(q, k):
@@ -158,7 +161,15 @@ def picks_info():
         if not want and r["verdict"] in ("APPLY", "STRETCH"):
             want = ["packet", "referral"]  # added via the inbox and worth pursuing: the agent should prepare both
         done = all(has[a] for a in want) if want else True
-        out.append({"id": r["job_id"], "ts": r["ts"], "company": r["company"], "title": r["title"], "location": r["location"], "url": r["url"], "score": r["score"], "tier": r["tier"],
+        probs = []
+        try:
+            jr = c.execute("SELECT req FROM jobs WHERE id=?", (r["job_id"],)).fetchone()["req"]
+            probs = (json.loads(jr) or {}).get("problems", []) if jr else []
+        except (ValueError, TypeError):
+            pass
+        import browse
+        ppl = [{"name": x["name"], "degree": x["degree"], "url": x["url"], "headline": x["headline"][:90]} for x in browse.cached_people(r["company"], days=30)[:4]]
+        out.append({"problems": probs, "people": ppl, "id": r["job_id"], "ts": r["ts"], "company": r["company"], "title": r["title"], "location": r["location"], "url": r["url"], "score": r["score"], "tier": r["tier"],
                     "status": r["status"], "visa": r["visa"], "yoe": r["yoe"], "loc_class": r["loc_class"], "verdict": r["verdict"], "fit": r["fit"], "wanted": want, "has": has, "ready": done})
     return out
 
@@ -188,14 +199,14 @@ def usage_info():
     return {"today": q(0), "week": q(7), "month": q(30), "daily": daily, "budgets": common.SETTINGS["llm"].get("budgets", {})}
 
 
-def schedule_info():
-    if os.name != "nt":
-        return {"supported": False}
-    r = subprocess.run(["schtasks", "/Query", "/TN", "JobAgentCycle", "/V", "/FO", "LIST"], capture_output=True, text=True)
-    txt = r.stdout or ""
-    g = lambda k: (re.search(rf"^{k}:\s*(.*)$", txt, re.M) or [None, ""])[1].strip()
-    return {"supported": True, "installed": r.returncode == 0, "status": g("Status"), "next": g("Next Run Time"), "last": g("Last Run Time"), "result": g("Last Result"), "interval": g("Repeat: Every"),
-            "minutes_setting": common.SETTINGS.get("poll_every_minutes")}
+_sched_cache = {"t": 0, "v": None}
+
+
+def schedule_info(fresh=False):
+    import schedule as sch, time as _t
+    if fresh or _t.time() - _sched_cache["t"] > 120:
+        _sched_cache.update(t=_t.time(), v=sch.info())
+    return _sched_cache["v"]
 
 
 def spawn(cmd, arg=""):
@@ -347,9 +358,10 @@ class H(http.server.BaseHTTPRequestHandler):
                 import llm
                 return self._j(llm.test(d.get("name", "")))
             if path == "/api/schedule":
-                if d.get("minutes"):
-                    return self._j(spawn("set-interval", str(int(d["minutes"]))) if False else {"out": subprocess.run([sys.executable, RUN_PY, "set-interval", str(int(d["minutes"]))], capture_output=True, text=True).stdout})
-                return self._j(spawn("enable-schedule" if d.get("enabled") else "disable-schedule"))
+                import schedule as sch
+                if d.get("times"):
+                    return self._j({"out": sch.install([t for t in d["times"] if isinstance(t, str)][:4])})
+                return self._j({"out": sch.enable(bool(d.get("enabled")))})
             if path == "/api/inbox":
                 import inbox
                 i = inbox.add(str(d.get("text", ""))[:20000], str(d.get("context", ""))[:2000])

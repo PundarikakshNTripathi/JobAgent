@@ -12,10 +12,10 @@
  SETUP      init                  create your workspace + profile (interactive)      doctor   check everything
             providers [test <name>]   list/test LLM providers      bench [n]   benchmark providers on your data
             gui [--no-open]       local web GUI                       yc-profile  rewrite your YC profile (truthful)
- SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-interval <minutes>
+ SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-times HH:MM [HH:MM]   (default 09:00 18:00)
  MEMORY     reflect               update the agent's memory + scoring tweaks from your outcomes
 Your personal data lives in the workspace (see `doctor`), never in this repository."""
-import datetime as dt, os, subprocess, sys, time
+import datetime as dt, os, re, subprocess, sys, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
@@ -49,9 +49,13 @@ def cycle():
     try:
         c = db()
         deadline = time.time() + SETTINGS.get("cycle_minutes_budget", 25) * 60  # heavy model work is time-boxed so polling stays fresh; the rest resumes next cycle
+        stage = lambda name: meta_set(c, "cycle_stage", f"{now()}|{name}")  # shown live on the GUI's Run-pipeline button
+        stage("Inbox")
         inbox.process_pending()
+        stage("Polling job boards")
         new_ids, first = pipeline.poll()
         pipeline.instant_alerts(new_ids, first)
+        stage("Reading full job descriptions")
         try:
             import visa
             visa.enrich(SETTINGS.get("visa_checks_per_cycle", 40))
@@ -59,15 +63,18 @@ def cycle():
             log(f"visa enrichment failed: {ex}")
         stakes.promote_triaged()
         if budget_used(c, "triage_calls") < SETTINGS["max_triage_calls_per_day"]:
+            stage("Judging new matches")
             pipeline.triage()
         if dt.datetime.now().hour >= 7 and scout.due():
             try:
                 scout.run_scout()
             except Exception as ex:
                 log(f"scout failed: {ex}")
+        stage("Preparing applications")
         built = packets.run_packets(SETTINGS.get("packets_per_cycle", 4))
         built += packets.run_watch_drafts(2)
         # referral plans for EVERY good match (APPLY/STRETCH), watchlist first; LinkedIn browsing is capped separately inside plan_referral
+        stage("Planning referrals")
         left = SETTINGS.get("max_referrals_per_day", 12) - budget_used(c, "referrals")
         if left > 0:
             for r in c.execute("""SELECT j.id FROM jobs j JOIN triage t ON t.job_id=j.id
@@ -83,6 +90,7 @@ def cycle():
                 except Exception as ex:
                     log(f"referral failed {r['id']}: {ex}")
         filled = []
+        stage("Filling forms")
         if SETTINGS["auto_fill"] and in_fill_window():
             room = SETTINGS["max_fills_per_day"] - budget_used(c, "fills")
             for r in c.execute("""SELECT j.id FROM jobs j JOIN packets p ON p.job_id=j.id JOIN triage t ON t.job_id=j.id
@@ -96,6 +104,7 @@ def cycle():
                     packets._mark_ineligible(r["id"], str(ex))
                 except Exception as ex:
                     log(f"fill failed {r['id']}: {ex}")
+        stage("Learning from outcomes")
         try:
             memory.reflect()
         except Exception as ex:
@@ -107,6 +116,7 @@ def cycle():
             except Exception as ex:
                 log(f"today failed: {ex}")
         meta_set(c, "last_cycle", now())
+        stage("done")
         log(f"cycle done: packets={len(built)} fills={len(filled)} dashboard={path}")
     finally:
         try:
@@ -176,7 +186,8 @@ def doctor():
     except Exception as e:
         ok, why = False, str(e)
     print("browsing :", ("OK " if ok else "NOT READY: ") + why + ("" if ok else "  (required: LinkedIn, YC, job boards, form filling)"))
-    print("schedule :", _schtasks("/Query", "/TN", TASK, "/FO", "LIST").splitlines()[:6] if os.name == "nt" else "n/a")
+    import schedule as sch
+    print("schedule :", sch.info())
 
 
 def main():
@@ -299,17 +310,17 @@ def main():
         print("ok")
     elif cmd == "notify-test":
         notify("JobAgent test", "If you can read this, notifications work.")
-    elif cmd == "install-schedule":
-        schedule(True)
-    elif cmd == "remove-schedule":
-        schedule(False)
-    elif cmd == "enable-schedule":
-        print(_schtasks("/Change", "/TN", TASK, "/ENABLE"))
-    elif cmd == "disable-schedule":
-        print(_schtasks("/Change", "/TN", TASK, "/DISABLE"))
-    elif cmd == "set-interval":
-        common.save_override("settings.json", {"poll_every_minutes": int(a[1])})
-        schedule(True, int(a[1]))
+    elif cmd in ("install-schedule", "remove-schedule", "enable-schedule", "disable-schedule", "set-times", "set-interval"):
+        import schedule as sch
+        if cmd == "install-schedule":
+            print(sch.install())
+        elif cmd == "remove-schedule":
+            print(sch.remove())
+        elif cmd in ("enable-schedule", "disable-schedule"):
+            print(sch.enable(cmd == "enable-schedule"))
+        else:  # set-times 09:00 18:00   (set-interval is the old name; it now takes times too)
+            ts = [x for x in a[1:] if re.fullmatch(r"\d{1,2}:\d\d", x)]
+            print(sch.install([x.zfill(5) for x in ts]) if ts else "usage: set-times HH:MM [HH:MM ...]   e.g. set-times 09:00 18:00")
     else:
         print(__doc__)
 
