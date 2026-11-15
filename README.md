@@ -92,7 +92,21 @@ Click a card title for the **detail panel**: Application (odds, strengths, gaps,
 ## 5. Things you find yourself: Inbox, chat, agent loop
 
 - **Inbox** (GUI) or `run.py inbox add "<text or link>" "<your context>"`: the agent extracts the opportunities, fetches the pages, judges fit (your items jump the queue), and for promising ones prepares the packet and referral plan.
-- **Ask the agent** (GUI) or `run.py chat "..."`: knows your profile, memory and pipeline. It *proposes* actions (prepare, plan referral, mark, remember, add to inbox, hand a goal to the agent loop); nothing runs until you click.
+- **Ask the agent** (GUI) or `run.py chat "..."`: knows your profile, memory, pipeline, inbox and picks. Write what you want in plain words, or use **slash commands** (below). Whatever it starts runs as a hidden background job and the **result is posted back into the chat** when it finishes: the people found (names, profile links, how to reach each) or the honest reason it failed. Prep actions (packet, referral, LinkedIn scouting, resume, scout, today, poll, yc-profile, inbox retry, remember, add) start right away because you asked for them; `fill`, `mark` and `agent` run from plain words only when your words call for them, otherwise you get a confirm button. Nothing ever submits an application.
+
+### Chat slash commands
+
+Type `/` in the chat box for a menu; `/help` lists everything; the *Commands* panel under the chat box is a clickable tour. They run instantly and need no model, so they work even when every provider is out of quota. `<id or words>` is a job id (from `/top` or `/jobs`) or company/title words, e.g. `/referral datadog applied science`; if the words match several jobs, they are listed and you repeat with an id.
+
+| Group | Commands |
+|---|---|
+| Basics | `/help [cmd]` `/status` `/usage` |
+| Find | `/top [n]` `/jobs <words>` `/picks` `/watch` |
+| Prepare | `/packet <job>` `/referral <job>` `/linkedin <job>` `/resume <job>` `/fill <job>` |
+| Track | `/mark <job> applied\|skip\|dismissed [reason]` `/add <link or text> [-- context]` `/retry` `/inbox` `/remember <fact>` |
+| Run | `/scout` `/today` `/poll` `/cycle` `/yc-profile` `/reflect` `/agent <goal>` |
+
+`/linkedin <job>` opens your logged-in agent Chrome **read-only** and looks at 1st-degree, then 2nd-degree, people at the company; it reports real names, profile links and how to approach each. If LinkedIn cannot be used (browsing switched off, the Claude quota is out, you are logged out), the plan says so on its first line instead of quietly handing you generic web advice. `/referral` uses LinkedIn too when allowed. Jobs you start by hand ignore the daily LinkedIn cap, which only limits scheduled background scouting.
 - **Agent loop** `run.py agent "<goal>"`: a bounded ReAct loop (default 12 steps) over tools such as search jobs, get job, packet, referral, resume, mark, remember, web search, fetch, inbox. It works with any provider. It cannot submit applications, change settings or touch the schedule.
 
 ---
@@ -132,6 +146,8 @@ Outreach is written in a separate step from research, using a style playbook of 
 | `poll` / `triage` / `scout` | single stages (`poll` costs no tokens) |
 | `top [n]` / `watch` / `status` / `usage` | what to look at / watchlist / counts / model usage per provider and task |
 | `packet <id>` / `referral <id>` / `resume <id>` / `fill <id>` | prepare / plan contacts / tailor resume advice / fill form (never submits) |
+| `linkedin <id>` | read-only LinkedIn scouting for that job (people, profile links, approach); warns if it could not run |
+| `picks` | add earlier hand-prepared jobs to *My picks* (safe to repeat) |
 | `mark <id> applied\|skip\|dismissed [reason]` | record your decision; reasons teach the agent |
 | `inbox [add "<text>" "<context>"]` / `chat "<message>"` / `agent "<goal>"` | bring in outside opportunities / talk / run a goal |
 | `today [--force]` / `dashboard` / `reflect` | daily plan / dashboard / update memory now |
@@ -154,6 +170,10 @@ Anything empty in `profile.form_defaults` is never guessed: it appears under "Ne
 Polling, filtering, de-duplication and the watchlist rules use no tokens. Headless Claude calls run in lean mode (about 0.7k input tokens overhead instead of about 27k). Browser steps (form fill, LinkedIn, YC) are the expensive ones. Every call is logged by provider and task (**Usage & cost**); set per-provider daily budgets and the agent falls back to another provider when one is exhausted. Costs shown are list-price equivalents; subscriptions are rate-limited rather than billed per token.
 
 ---
+
+### Balanced defaults
+
+Out of the box a cycle runs every 3 hours and does a modest amount of model work: at most 2 packets and 1 referral plan per cycle, 10 packets, 8 referral plans, 3 LinkedIn scouts (background only) and 3 form fills per day, one scout every 2 days. Form filling and LinkedIn are the heavy steps, so they are the tightest. The recommended mix when you have both Claude and Antigravity: **Claude** for triage, chat, inbox, packets, outreach, resume, form filling, LinkedIn and YC (quality, and the only provider here that drives the browser); **agy (Gemini)** for referral research, scouting, the daily plan and reflection (slow, text-only work that spares your Claude window). Each falls back to the other, and a provider that reports its limit is paused until the reset. Raise the caps in Settings when you have headroom; `run.py usage` or `/usage` shows what each provider has done today.
 
 ### Quota-aware, and protecting your own budget
 

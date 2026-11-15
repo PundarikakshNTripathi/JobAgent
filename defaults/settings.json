@@ -1,17 +1,17 @@
 {
-  "poll_every_minutes": 60,
+  "poll_every_minutes": 180,
   "min_heuristic_score_for_llm": 58,
   "instant_alert_score": 78,
   "max_triage_calls_per_day": 10,
   "triage_batch_size": 12,
-  "max_triage_per_cycle": 36,
+  "max_triage_per_cycle": 30,
   "triage_desc_chars": 1600,
   "max_packets_per_day": 8,
   "packet_min_fit": 50,
-  "max_referrals_per_day": 12,
+  "max_referrals_per_day": 8,
   "max_linkedin_per_day": 3,
   "linkedin_browse": false,
-  "max_fills_per_day": 4,
+  "max_fills_per_day": 3,
   "auto_fill": false,
   "fill_window_local_hours": [
     7,
@@ -198,7 +198,7 @@
     ]
   ],
   "cycle_minutes_budget": 25,
-  "packets_per_cycle": 4,
-  "referrals_per_cycle": 6,
+  "packets_per_cycle": 2,
+  "referrals_per_cycle": 1,
   "visa_checks_per_cycle": 40
 }

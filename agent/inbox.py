@@ -173,14 +173,22 @@ def summary(limit=12):
 CHAT = """{ctx}
 
 You are JobAgent, the user's job-search agent. Answer like a sharp, honest friend who knows the pipeline: short, concrete, no fluff, no flattery.
-You can take actions. To act, end your reply with one line per action, exactly in this form (the system runs them after your reply):
-  ACTION: packet <job id>          prepare the application packet
-  ACTION: referral <job id>        plan who to contact and draft messages
-  ACTION: mark <job id> applied|skip [reason]
+You DO things by ending your reply with ACTION lines, one per action. The system runs each one the moment you send the reply and posts the result into this chat when it finishes, so:
+ - If the user asks you to do something, emit the ACTION for it. Never say you will do it, or that a button will appear, without the ACTION line; never claim a result you have not seen.
+ - Do exactly what was asked, for exactly the job(s) named. Do not substitute generic advice for an action. Do not add actions that were not asked for.
+ - <target> is a job id from the snapshot, OR company/title words (e.g. "datadog applied science"); the system resolves it and asks the user if it is ambiguous.
+  ACTION: packet <target>          cover letter, answers, tailored resume
+  ACTION: referral <target>        who to approach + drafted messages (LinkedIn if allowed, else public web)
+  ACTION: linkedin <target>        read-only scouting of LinkedIn in the user's logged-in agent browser: real people (names, profile links), 1st/2nd degree, how to approach
+  ACTION: resume <target>          resume tailoring advice
+  ACTION: fill <target>            fill the form in the agent browser (never submits); only when the user asked to fill
+  ACTION: mark <target> applied|skip|dismissed [reason]     only when the user said so
+  ACTION: scout | today | poll | yc-profile | retry-inbox    run that job
   ACTION: remember <fact about the user or a preference>
-  ACTION: ingest <text or link the user gave>   add an opportunity from outside the feeds
-  ACTION: agent <goal>             hand a multi-step goal to the autonomous agent loop
-These are PROPOSALS: the user confirms each before it runs, so only propose what is genuinely useful (at most 3). Only use ids that appear below. Never propose submitting an application.
+  ACTION: ingest <text or link the user gave>
+  ACTION: agent <goal>             a multi-step goal for the autonomous agent loop (use for research that needs several steps)
+At most 4 actions. Never submit an application. The user can also type slash commands (/help lists them); mention one only if it is the better tool.
+For read-only questions (top matches, status, what is in the inbox) just answer from the snapshot.
 
 PIPELINE SNAPSHOT
 {snapshot}
@@ -191,7 +199,7 @@ RECENT CHAT
 USER: {text}
 JOBAGENT:"""
 
-ALLOWED_ACTIONS = ("packet", "referral", "mark", "remember", "ingest", "agent", "retry-inbox")
+ALLOWED_ACTIONS = ("packet", "referral", "linkedin", "resume", "fill", "mark", "remember", "ingest", "agent", "retry-inbox", "scout", "today", "poll", "yc-profile")
 
 
 def snapshot():
@@ -206,13 +214,27 @@ def snapshot():
 
 
 def reply(text):
+    import chatcmd
     c = db()
     c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "user", text))
     c.commit()
-    hist = "\n".join(f"{r['role'].upper()}: {r['text'][:600]}" for r in reversed(c.execute("SELECT role,text FROM chat ORDER BY id DESC LIMIT 7").fetchall()[1:]))
-    out, _ = run(CHAT.format(ctx=memory.context_pack(), snapshot=snapshot(), history=hist or "(start)", text=text), kind="chat", timeout=240, max_turns=2)
-    actions = []
-    body = []
+    if text.lstrip().startswith("/"):  # slash commands never touch the model: instant, exact, work even when every provider is out of quota
+        try:
+            answer = chatcmd.run_slash(text)
+        except Exception as e:
+            answer = f"That command failed: {e}"
+        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "agent", answer))
+        c.commit()
+        return answer, []
+    hist = "\n".join(f"{r['role'].upper()}: {r['text'][:600]}" for r in reversed(c.execute("SELECT role,text FROM chat WHERE role!='proposal' ORDER BY id DESC LIMIT 7").fetchall()[1:]))
+    try:
+        out, _ = run(CHAT.format(ctx=memory.context_pack(), snapshot=snapshot(), history=hist or "(start)", text=text), kind="chat", timeout=240, max_turns=2)
+    except Exception as e:
+        answer = f"I cannot think right now ({str(e)[:220]}). Slash commands still work without a model, e.g. /top, /jobs datadog, /packet <id>, /linkedin <id>, /usage. Type /help."
+        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "agent", answer))
+        c.commit()
+        return answer, []
+    actions, body = [], []
     for ln in out.splitlines():
         m = re.match(r"\s*ACTION:\s*([\w-]+)\s*(.*)", ln)
         if m and m.group(1) in ALLOWED_ACTIONS:
@@ -220,11 +242,13 @@ def reply(text):
         else:
             body.append(ln)
     answer = "\n".join(body).strip()
+    done, props = chatcmd.execute_nl_actions(text, actions[:4])
+    if done:
+        answer += "\n\nStarted:\n" + "\n".join("- " + d for d in done)
     c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "agent", answer))
     c.commit()
-    # Chat only PROPOSES actions; the user confirms each one (GUI button or `run.py <cmd>`). Nothing changes state on its own.
-    proposals = [{"kind": k, "arg": arg[:300]} for k, arg in actions[:4]]
-    if proposals:
-        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "proposal", json.dumps(proposals)))
+    # state-changing / form-filling actions the user did not ask for in words stay as confirm buttons
+    if props:
+        c.execute("INSERT INTO chat(ts,role,text) VALUES(?,?,?)", (now(), "proposal", json.dumps(props)))
         c.commit()
-    return answer, proposals
+    return answer, props

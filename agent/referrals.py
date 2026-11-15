@@ -111,8 +111,11 @@ Return ONLY JSON:
 """
 
 
-def plan_referral(job_id):
+def plan_referral(job_id, manual=False, require_linkedin=False):
+    """manual=True: the user asked for this one, so the daily LinkedIn cap (meant for background runs) does not apply.
+    Whenever LinkedIn scouting does not run or fails, the plan says so on its first line instead of silently looking like a LinkedIn result."""
     c = db()
+    li_note = ""
     job = c.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
     tri = c.execute("SELECT * FROM triage WHERE job_id=?", (job_id,)).fetchone()
     pk = c.execute("SELECT * FROM packets WHERE job_id=?", (job_id,)).fetchone()
@@ -130,22 +133,39 @@ def plan_referral(job_id):
               f"and alumni of the candidate's university ({PROFILE.get('education', '')}) at the company if you can find any publicly.")
         tasks = ("1. Identify 2-3 specific real people (cite where you found them) who work on the relevant team/problem.\n"
                  "2. Rank them by approachability and relevance.\n3. Draft cold-outreach messages (connection note, DM, email if a public email exists).")
-    if SETTINGS.get("linkedin_browse", True) and budget_used(c, "linkedin") < SETTINGS.get("max_linkedin_per_day", 1):
+    if not SETTINGS.get("linkedin_browse", True) and not require_linkedin:
+        li_note = "LinkedIn browsing is switched off in settings (linkedin_browse), so this plan uses public-web research only."
+    elif not (manual or require_linkedin) and budget_used(c, "linkedin") >= SETTINGS.get("max_linkedin_per_day", 1):
+        li_note = f"Background LinkedIn scouting is capped at {SETTINGS.get('max_linkedin_per_day', 1)}/day and is used up, so this plan is public-web only. Run `linkedin {job_id}` (or /linkedin in the chat) to scout LinkedIn for this job now."
+    else:
         try:
             import linkedin
             r = linkedin.scout_people(job, hits)
-            return _write(c, job, tri, pk, r, len(hits), "linkedin")
+            if not (r.get("targets") or []):
+                li_note = "LinkedIn was searched but no usable people were found (" + str(r.get("notes") or r.get("degree_searched") or "no detail") + "). Public-web research was added below."
+            else:
+                return _write(c, job, tri, pk, r, len(hits), "linkedin")
         except Exception as e:
+            li_note = "LinkedIn scouting FAILED, so this is public-web research only, not a LinkedIn result: " + str(e)[:400]
             log(f"linkedin scout failed ({e}); falling back to public-web referral research")
+    if li_note:
+        log("referral: " + li_note)
+        if require_linkedin:
+            print("WARNING:", li_note)
     prompt = REF_PROMPT.format(summary=PROFILE["summary"], projects=" | ".join(PROFILE["projects"][:3]), site=PROFILE["website"], company=job["company"],
                                title=job["title"], location=job["location"], url=job["url"], reason=(tri["reason"] if tri else ""), contacts_block=cb, tasks=tasks)
     text, _ = run_claude(prompt, kind="referral", allowed_tools="WebSearch,WebFetch", timeout=SETTINGS["packet_timeout_s"], max_turns=16)
     r = extract_json(text)
+    if li_note:
+        r["_note"] = li_note
     return _write(c, job, tri, pk, r, len(hits), "web")
 
 
 def _write(c, job, tri, pk, r, nhits, how):
-    out = [f"# Referral plan: {job['company']} - {job['title']}", job["url"], "", "## Strategy", r.get("strategy", ""), "", "## Timing", r.get("timing", ""), "", "## Do first"]
+    out = [f"# Referral plan: {job['company']} - {job['title']}", job["url"]]
+    if r.get("_note"):
+        out += ["", "> NOTE: " + r["_note"]]
+    out += ["", "## Strategy", r.get("strategy", ""), "", "## Timing", r.get("timing", ""), "", "## Do first"]
     out += [f"- {x}" for x in r.get("before_you_message", [])]
     for i, t in enumerate(r.get("targets", []), 1):
         out += ["", f"## Target {i}: {t.get('name')} ({t.get('role') or t.get('headline')})", f"Why: {t.get('why_them') or t.get('why_likely_to_respond')}", f"Evidence: {t.get('evidence')}", f"Profile: {t.get('profile_url')}",

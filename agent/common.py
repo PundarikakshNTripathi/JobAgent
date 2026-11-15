@@ -296,6 +296,34 @@ def slug(s, n=48):
 BACKGROUND = False  # set by the scheduled cycle: background work must leave headroom for interactive use (see llm.run)
 
 
+def backfill_picks():
+    """Picks made before the My-picks list existed. A referral plan with no packet is always something the user asked for (the scheduled cycle builds the packet first), and any
+    application folder that shows up in the GUI/CLI run log was started by hand. Idempotent; returns how many jobs were added."""
+    c = db()
+    have = {r[0] for r in c.execute("SELECT job_id FROM picks")}
+    found = {}
+    for r in c.execute("SELECT job_id FROM referrals WHERE job_id NOT IN (SELECT job_id FROM packets)"):
+        found.setdefault(r[0], set()).add("referral")
+    try:
+        txt = open(os.path.join(LOGS, "gui_runs.log"), encoding="utf-8", errors="replace").read()
+    except OSError:
+        txt = ""
+    folders = set(re.findall(r"(20\d\d-\d\d-\d\d_[A-Za-z0-9._-]+)", txt))
+    if folders:
+        for tbl, act in (("packets", "packet"), ("referrals", "referral")):
+            for r in c.execute(f"SELECT job_id, dir FROM {tbl}"):
+                if any(f in (r["dir"] or "") for f in folders):
+                    found.setdefault(r["job_id"], set()).add(act)
+    n = 0
+    for jid, acts in found.items():
+        if jid in have:
+            continue
+        c.execute("INSERT OR IGNORE INTO picks(job_id,ts,actions) VALUES(?,?,?)", (jid, now(), ",".join(sorted(acts))))
+        n += 1
+    c.commit()
+    return n
+
+
 def add_pick(job_id, action):
     """A job the USER chose to work on (clicked prepare/referral/resume/fill, or added through the inbox). Shown in 'My picks'."""
     c = db()

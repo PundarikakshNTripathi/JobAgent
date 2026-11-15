@@ -10,7 +10,7 @@ STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui_static", 
 # command -> needs an argument?
 ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "today": False, "dashboard": False, "usage": False, "yc-profile": False, "inbox": False,
            "reflect": False, "bench": False, "inbox-retry": False, "enable-schedule": False, "disable-schedule": False, "packet": True, "referral": True, "resume": True, "fill": True,
-           "linkedin": True, "mark": True, "agent": True}
+           "linkedin": True, "mark": True, "agent": True, "retry": False}
 SETTING_KEYS = {"poll_every_minutes", "min_heuristic_score_for_llm", "instant_alert_score", "max_triage_calls_per_day", "triage_batch_size", "max_triage_per_cycle", "triage_desc_chars",
                 "max_packets_per_day", "packet_min_fit", "max_referrals_per_day", "max_linkedin_per_day", "linkedin_browse", "max_fills_per_day", "auto_fill", "fill_window_local_hours",
                 "scout_every_days", "guard_minutes", "notify", "web", "humanize", "memory", "agent_mode", "llm", "include_new_grad_list", "recent_days_github_lists"}
@@ -199,18 +199,10 @@ def schedule_info():
 
 
 def spawn(cmd, arg=""):
-    if cmd == "inbox-retry":
-        args = [sys.executable, RUN_PY, "inbox", "retry", arg or "all"]
-    else:
-        args = [sys.executable, RUN_PY, cmd] + (arg.split() if cmd == "mark" else ([arg] if arg else []))
-    key = f"{cmd} {arg[:30]}".strip()
-    with _lock:
-        p = JOBS.get(key)
-        if p and p.poll() is None:
-            return {"error": "already running"}
-        logf = open(os.path.join(LOGS, "gui_runs.log"), "a", encoding="utf-8")
-        JOBS[key] = subprocess.Popen(args, stdout=logf, stderr=subprocess.STDOUT, cwd=CORE)
-    return {"started": key}
+    """Start a command as a hidden background process (shared with the chat commands). Jobs that produce something to read post a result message into the chat when they finish."""
+    import chatcmd
+    msg = chatcmd.launch(cmd, arg, chat=cmd in chatcmd.JOB_CMDS + chatcmd.PLAIN + ("agent", "inbox-retry", "retry"))
+    return {"error": "already running"} if msg.startswith("already running") else {"started": msg.replace("started: ", "")}
 
 
 def chat_thread(text):
@@ -302,6 +294,9 @@ class H(http.server.BaseHTTPRequestHandler):
             if path == "/api/chat":
                 rows = [dict(r) for r in db().execute("SELECT * FROM chat ORDER BY id DESC LIMIT 60").fetchall()][::-1]
                 return self._j({"messages": rows, "busy": CHAT_BUSY["on"]})
+            if path == "/api/commands":
+                import chatcmd
+                return self._j({"commands": chatcmd.commands_json()})
             if path == "/api/voice":
                 import humanize
                 rd = lambda p: open(p, encoding="utf-8").read() if os.path.exists(p) else ""

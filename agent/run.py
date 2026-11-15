@@ -3,7 +3,8 @@
  RUN        cycle                  poll all sources -> alert -> triage -> scout -> packets -> referral plans -> fill forms -> reflect -> dashboard
             poll | triage | scout  individual stages (poll costs no tokens)
  JOBS       top [n] | watch | status | usage | today [--force]
-            packet <id> | referral <id> | resume <id> | fill <id>      (fill never submits)
+            packet <id> | referral <id> | linkedin <id> | resume <id> | fill <id>   (fill never submits; linkedin = read-only scouting)
+            picks                 add earlier hand-prepared jobs to My picks
             mark <id> applied|skip|dismissed [reason words]            (reasons teach the agent)
  YOU FIND   inbox                 process pending inbox items;  inbox add "<text or link>" ["<your context>"]
             chat "<message>"      talk to the agent;  agent "<goal>"   let it work a multi-step goal with tools
@@ -187,7 +188,10 @@ def main():
         print(packets.build_packet(a[1]))
     elif cmd in ("referral", "linkedin"):
         import referrals
-        print(referrals.plan_referral(a[1]))
+        # you asked for this one by hand: the background LinkedIn cap does not apply; `linkedin` insists on LinkedIn and warns loudly if it could not run
+        print(referrals.plan_referral(a[1], manual=True, require_linkedin=(cmd == "linkedin")))
+    elif cmd == "picks":
+        print(common.backfill_picks(), "earlier picks added to My picks")
     elif cmd == "resume":
         import resume
         print(resume.advise(a[1]))
@@ -210,6 +214,8 @@ def main():
         import inbox
         ans, done = inbox.reply(" ".join(a[1:]))
         print(ans, "\n", done or "")
+        import chatcmd
+        chatcmd.wait_all()
     elif cmd == "agent":
         import agentic
         print(agentic.loop(" ".join(a[1:])))
