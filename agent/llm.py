@@ -319,14 +319,27 @@ def _openai_compat(prompt, route, o, name):
         # Hybrid-thinking local models: reason step by step only where judgement matters (triage, ranking, reflection, the agent); answer
         # directly for extraction and browsing steps. Sampling follows the model card's recommendations for each mode.
         lc = common.SETTINGS["llm"].get("local", {})
-        think = o.get("kind") in lc.get("thinking_kinds", ["triage", "rank", "reflect", "chat", "scout", "today", "bench"])
+        think = o.get("kind") in lc.get("thinking_kinds", ["reflect", "today", "chat"])
         body["chat_template_kwargs"] = {"enable_thinking": think}
         body.update(temperature=0.6 if think else 0.7, top_p=0.95 if think else 0.8, top_k=20, min_p=0)
-        body["max_tokens"] = lc.get("max_tokens", 8192)
+        if not think and o.get("kind") in lc.get("json_kinds", ["triage", "bench", "rank", "ingest", "browse", "scout-plan", "packet-plan", "referral-plan"]):
+            # grammar-constrained decoding: the server can only emit valid JSON, and a lower temperature keeps judgements consistent
+            arr = re.search(r"ONLY (a |one )?JSON\s+array", prompt, re.I) is not None
+            body["response_format"] = {"type": "json_schema", "json_schema": {"name": "out", "schema": {"type": "array", "items": {"type": "object"}} if arr else {"type": "object"}}}
+            body["temperature"] = 0.3
+        body["max_tokens"] = lc.get("max_tokens_thinking", 4096) if think else lc.get("max_tokens", 6144)
     hdr = {"Authorization": f"Bearer {key_of(pdef)}"} if key_of(pdef) else {}
     j = _http(pdef["base_url"].rstrip("/") + "/chat/completions", body, hdr, o["timeout"])
     u = j.get("usage", {})
     text = _THINK.sub("", j["choices"][0]["message"].get("content") or "")  # reasoning stays out of the answer (llama.cpp also returns it separately)
+    if not text.strip() and body.get("chat_template_kwargs", {}).get("enable_thinking"):
+        # the model used its whole budget thinking: answer again directly (fast, and the JSON carries its own reasons)
+        body["chat_template_kwargs"] = {"enable_thinking": False}
+        body.update(temperature=0.7, top_p=0.8)
+        j = _http(pdef["base_url"].rstrip("/") + "/chat/completions", body, hdr, o["timeout"])
+        u2 = j.get("usage", {})
+        u = {"prompt_tokens": u.get("prompt_tokens", 0) + u2.get("prompt_tokens", 0), "completion_tokens": u.get("completion_tokens", 0) + u2.get("completion_tokens", 0)}
+        text = _THINK.sub("", j["choices"][0]["message"].get("content") or "")
     return text, {"inp": u.get("prompt_tokens", 0), "outp": u.get("completion_tokens", 0)}
 
 

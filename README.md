@@ -285,6 +285,23 @@ Each falls back to the other. The setup wizard proposes a mix for whatever you h
 | 6 GB GPU, or 16 GB RAM with no GPU | Qwen3.5-4B Q4_K_M (CPU runs are slow, but fine overnight) |
 | Less | Stay on hosted models |
 
+How it keeps the intelligence while running small:
+- **Thinking where it pays:** hybrid-thinking models reason step by step only for reflection, the daily plan and chat. Triage, ranking and extraction answer directly, because long reasoning on batch tasks burned the whole output budget without answering. If a reasoning run ever comes back empty, it is retried without thinking.
+- **Valid JSON by construction:** structured tasks use llama.cpp's grammar-constrained decoding (an array or object schema matched to the prompt) at a low temperature, so malformed output is impossible and judgements stay consistent.
+- **A second opinion where it matters:** when the local model says SKIP on a job the rules score highly, your main hosted model takes one more look (a few per run). A small model never silently throws away a good opportunity.
+- **Quality gate:** the agreement benchmark must pass before routing changes, and `local-bench` lists every disagreement so you can see which way it errs.
+- **Smooth to run:** it starts on first use (about 10 s), and frees the GPU after each scheduled run (`llm.local.keep_running` keeps it loaded). It is also the last fallback when hosted quotas run out. Context is 32k tokens.
+
+Measured on an RTX 5060 Laptop (8 GB) with Qwen3.5-9B Q4_K_M:
+
+| Metric | Result |
+|---|---|
+| Generation speed | about 53 tokens/s |
+| Prompt reading | about 2,000 tokens/s |
+| GPU memory | 7.4 GB |
+| Agreement with Claude on triage | 90% (27 of 30 jobs) |
+| Time for those 30 jobs | 66 s |
+
 Why not a bigger model on an 8 GB laptop? 30–35B MoE models such as Qwen3.6-35B-A3B or GLM-4.7-Flash need about 18–20 GB of weights. With CPU offload that fits a 24 GB-VRAM card or a Linux machine with plenty of free RAM, but on an 8 GB laptop running Windows it pages and crawls. Writing that a human reads (cover letters, outreach, resume advice) stays on your best hosted model either way.
 
 Other commands: `local-status`, `local-start`, `local-stop`, `local-bench [--apply]`. Ollama and LM Studio also work, as OpenAI-compatible providers.

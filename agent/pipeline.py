@@ -167,6 +167,29 @@ def triage_prompt(batch):
         postings="\n---\n".join(_fmt(r) for r in batch))
 
 
+def _second_opinion(res, by_id):
+    """Safety net for local triage: a SKIP on a job the rules score highly gets one look from the main hosted model (few per run), so a small
+    model never silently throws away a good opportunity. Its verdict replaces the local one."""
+    lc = SETTINGS["llm"].get("local", {})
+    floor, cap = lc.get("second_opinion_min_score", 66), lc.get("second_opinion_max", 6)
+    doubt = [o for o in res if (o.get("verdict") or "").upper() == "SKIP" and o.get("id") in by_id and (by_id[o["id"]]["score"] or 0) >= floor][:cap]
+    if not doubt:
+        return res
+    main = next((p for p in SETTINGS["llm"].get("fallbacks", []) if p != "local"), None)
+    if not main:
+        return res
+    try:
+        import llm
+        text, _ = llm.run(triage_prompt([by_id[o["id"]] for o in doubt]), kind="triage", provider=main, timeout=SETTINGS["triage_timeout_s"], max_turns=2)
+        better = {o.get("id"): o for o in extract_json(text) if isinstance(o, dict)}
+    except Exception as e:
+        log(f"triage second opinion skipped: {e}")
+        return res
+    changed = sum(1 for o in doubt if (better.get(o["id"], {}).get("verdict") or "SKIP").upper() != "SKIP")
+    log(f"triage: {main} re-checked {len(doubt)} local SKIPs on high-scoring jobs, {changed} changed to pursue")
+    return [better.get(o.get("id"), o) for o in res]
+
+
 def triage(max_jobs=None):
     c = db()
     limit = max_jobs or SETTINGS["max_triage_per_cycle"]
@@ -186,13 +209,15 @@ def triage(max_jobs=None):
         batch = rows[i:i + bs]
         prompt = triage_prompt(batch)
         try:
-            text, _ = run_claude(prompt, kind="triage", timeout=SETTINGS["triage_timeout_s"], max_turns=2)
+            text, raw = run_claude(prompt, kind="triage", timeout=SETTINGS["triage_timeout_s"], max_turns=2)
             res = extract_json(text)
             budget_add(c, "triage_calls")
         except Exception as e:
             log(f"triage batch failed: {e}")
             continue
         by_id = {r["id"]: r for r in batch}
+        if raw.get("provider") == "local" and isinstance(res, list):
+            res = _second_opinion(res, by_id)
         for o in res if isinstance(res, list) else []:
             jid = o.get("id")
             if jid not in by_id:

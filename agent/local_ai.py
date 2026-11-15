@@ -187,6 +187,7 @@ def bench(n=30, threshold=0.85, apply=False):
     if len(rows) < 8:
         return {"ok": False, "why": f"only {len(rows)} fully-read triaged jobs to compare; run a few cycles first"}
     agree = total = 0
+    diffs = []
     t0 = time.time()
     for i in range(0, len(rows), 5):
         batch = rows[i:i + 5]
@@ -200,9 +201,12 @@ def bench(n=30, threshold=0.85, apply=False):
         for r in batch:
             total += 1
             lv, mv = by.get(r["id"], ""), r["tv"]
-            agree += (lv == mv) or (lv in ("APPLY", "STRETCH") and mv in ("APPLY", "STRETCH"))  # APPLY vs STRETCH both mean 'pursue'
+            ok = (lv == mv) or (lv in ("APPLY", "STRETCH") and mv in ("APPLY", "STRETCH"))  # APPLY vs STRETCH both mean 'pursue'
+            agree += ok
+            if not ok:
+                diffs.append(f"{r['company']} - {r['title'][:50]}: local {lv or '?'} vs main {mv}")
     rate = agree / max(total, 1)
-    out = {"ok": rate >= threshold, "agreement": round(rate, 3), "jobs": total, "seconds": round(time.time() - t0), "threshold": threshold}
+    out = {"ok": rate >= threshold, "agreement": round(rate, 3), "jobs": total, "seconds": round(time.time() - t0), "threshold": threshold, "disagreements": diffs}
     common.meta_set(c, "local_bench", json.dumps(out))
     if apply and out["ok"]:
         routing = {k: {"provider": "local", "model": "local", "effort": ""} for k in LOCAL_KINDS}

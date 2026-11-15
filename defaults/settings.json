@@ -156,17 +156,14 @@
     "heavy_call_tokens": 50000,
     "local": {
       "ctx": 32768,
-      "max_tokens": 8192,
+      "max_tokens": 6144,
       "keep_running": false,
       "thinking_kinds": [
-        "triage",
-        "rank",
         "reflect",
-        "chat",
-        "scout",
         "today",
-        "bench"
-      ]
+        "chat"
+      ],
+      "max_tokens_thinking": 4096
     }
   },
   "high_stakes": {
