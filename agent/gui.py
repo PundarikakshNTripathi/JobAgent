@@ -357,6 +357,15 @@ class H(http.server.BaseHTTPRequestHandler):
                 common.save_override("settings.json", patch)
                 common.reload_config()
                 return self._j({"ok": True})
+            if path == "/api/open-browser":  # the agent's own Chrome, on the login pages, so the user can sign in once
+                import fill, subprocess as _sp, json as _json, urllib.request as _u
+                fill.ensure_chrome()
+                for u in ("https://www.linkedin.com/login", "https://www.workatastartup.com/"):
+                    try:
+                        _u.urlopen(_u.Request(f"http://127.0.0.1:{common.SETTINGS['chrome_debug_port']}/json/new?{u}", method="PUT"), timeout=10).read()
+                    except Exception:
+                        pass
+                return self._j({"ok": True})
             if path == "/api/provider-test":
                 import llm
                 return self._j(llm.test(d.get("name", "")))

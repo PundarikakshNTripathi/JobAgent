@@ -72,6 +72,29 @@ What is known: Google has sued third-party SERP scrapers (SerpApi, Dec 2025) ove
 
 Research task (4 facts with URLs about a team): Claude with native web search returned 4 live URLs, 3 mentioning the company; Gemini Flash with JobAgent's own retrieval returned 4 live URLs, 4 mentioning the company (49 s vs 15 s). No sign that Google-side blocking hurts Gemini here, and no sign that it helps beyond Claude on this task. Conclusion used for routing: latency-sensitive judgement (triage, ingest, chat) and writing stay on Claude; slow, retrieval-heavy synthesis (referral research, scouting, daily plan, reflection) goes to Gemini. Headless `agy` sometimes tries to call tools it cannot get permission for; JobAgent tells it not to and falls back to the next provider on failure.
 
-## 7. Safety model
+## 7. Deterministic where possible, a model only where judgement is needed
+
+The biggest cost and reliability lesson: a model that drives a browser by reading raw page snapshots is slow, expensive (300k–500k input tokens per LinkedIn
+scout or form fill) and only as good as its patience. JobAgent now splits each browser job into code and judgement:
+
+```
+            code (no tokens)                                   model (small, one call)                 code
+LinkedIn   people search -> parse cards -> employer filter -> rank real people + write approach (~3k) -> REFERRAL.md, people cache
+Forms      read fields in all frames (labels/options)       -> map facts/answers to field ids (~6k)  -> Playwright fills, verifies, guard
+JDs        ATS API / page / browser text -> requirement rules (years, degree, seniority, citizenship, grad year) -> gate (no model at all)
+```
+
+- `browse.py`: Playwright over CDP to the agent's own Chrome (your logins), with small JavaScript extractors and pacing. LinkedIn pages always get the read-only guard.
+- `jd.py`: full posting first, rules second; ineligible roles never reach triage. `audit` re-checks existing work.
+- `formfill.py`: the model only sees a field list and returns values; the model-driven MCP fill remains the fallback.
+- `rag.py`: SQLite FTS5 (BM25) over jobs + eligibility, plans, packets, people, profile facts, memory and chat; refreshed incrementally before each chat or
+  agent run, so prompts carry the 8–10 relevant items instead of snapshots.
+- `agentic.py`: plan step, notes, **context folding** (only the latest tool result stays verbatim), stable prompt prefix first for provider-side caching,
+  tools for recall, LinkedIn, any page and multi-step read-only browsing.
+- `llm.py`: routing per task, fallbacks, quota cooldowns, background allowance, **deferral** of quality work in background runs, response cache for
+  deterministic tasks, heavy-call logging.
+- `local_ai.py`: llama.cpp server with a model sized to the machine; cheap tasks are routed to it only after an agreement benchmark on the user's own jobs.
+
+## 8. Safety model
 
 Forms are filled but never submitted (prompt rule + injected page guard that blocks submit events, final-button clicks and application POSTs for a time window, plus a watchdog that reports confirmation pages). LinkedIn access is read-only (action buttons blocked, small page budget, paced). Chat and agent tools cannot submit, change settings, or touch the schedule. Prestige roles (fellowships, residencies, pre-docs, frontier-lab programs) are tracked, drafted and prepared for referral, never applied to automatically.
