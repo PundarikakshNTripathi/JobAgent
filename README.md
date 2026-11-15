@@ -1,25 +1,31 @@
-<p align="center"><img src="docs/img/logo.svg" width="72" alt="JobAgent logo"></p>
+<p align="center"><img src="docs/img/logo.svg" width="76" alt="JobAgent logo"></p>
 <h1 align="center">JobAgent</h1>
+<p align="center"><b>Find the role. Reach the people. You press Submit.</b></p>
+<p align="center">A local job-search agent that reads every posting, finds the people who can refer you, writes in your voice, and fills the form.</p>
+<p align="center">
+  <a href="https://github.com/PundarikakshNTripathi/JobAgent/actions/workflows/ci.yml"><img src="https://github.com/PundarikakshNTripathi/JobAgent/actions/workflows/ci.yml/badge.svg" alt="tests"></a>
+  <img src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20macOS%20%7C%20Linux-1e6b58" alt="Windows, macOS, Linux">
+  <img src="https://img.shields.io/badge/AI-Claude%20%7C%20Gemini%20%7C%20Codex%20%7C%20local-1e6b58" alt="Claude, Gemini, Codex or a local model">
+  <img src="https://img.shields.io/badge/data-stays%20on%20your%20computer-14201b" alt="Your data stays on your computer">
+</p>
 
-A local job-search agent that works like a sharp, tireless assistant:
-- It watches hundreds of career pages and reads every promising job description in full.
-- It drops roles you don't qualify for.
-- It finds the **real people** you can reach through your own LinkedIn network.
-- It writes the cover letter and messages in your voice, then fills the application form in its own browser.
-- Every morning it tells you what to do next.
+<p align="center"><img src="docs/img/gif-hero.gif" width="920" alt="Today's next action, who you know at each company, a referral plan, and asking the agent"></p>
 
-**It never presses Submit. You do.** Everything personal stays on your computer.
+| Find the role | Reach the people | You press Submit |
+|---|---|---|
+| Watches hundreds of career pages and reads every promising job description **in full**, dropping roles that need years you don't have, a degree you aren't doing, or a citizenship you don't hold. | Finds **real people** you know, or can reach through a mutual connection, at each company, through your own logged-in LinkedIn, and drafts messages that sound like you. | Writes the cover letter, answers the form questions and **fills the application** in its own browser. It never submits, sends or connects. The last click is yours. |
 
-| Today, light | Today, dark |
-|---|---|
-| ![Today](docs/img/gui-today.png) | ![Today in dark mode](docs/img/gui-today-dark.png) |
+<table><tr>
+<td width="50%"><b>Ask in plain words or <code>/commands</code></b><br><img src="docs/img/gif-ask-the-agent.gif" alt="Slash commands in the chat"></td>
+<td width="50%"><b>Ctrl K: anything in two keystrokes</b><br><img src="docs/img/gif-command-palette.gif" alt="Command palette"></td>
+</tr></table>
 
 Works with the AI you already have, alone or mixed:
 - **CLI tools:** Claude Code, Google Antigravity (Gemini), Codex, Gemini CLI.
 - **APIs:** any OpenAI-compatible API, or the Anthropic API.
 - **On your own GPU:** a **local model** run by llama.cpp.
 
-Runs on **Windows, macOS and Linux**.
+Runs on **Windows, macOS and Linux**. Everything personal stays on your computer. Brand and voice: [docs/BRAND.md](docs/BRAND.md).
 
 ---
 
@@ -147,9 +153,11 @@ Prestige roles (frontier-lab fellowships, residencies, pre-docs, safety programs
 
 ![My picks and a referral plan](docs/img/gif-my-picks.gif)
 
-**Ctrl K anywhere:** jump to any view, find a job by name, or run a / command.
+**Ctrl K anywhere:** jump to any view, find a job by name, or run a / command (see the top of this page).
 
-![Command palette](docs/img/gif-command-palette.gif)
+| Today, light | Today, dark |
+|---|---|
+| ![Today](docs/img/gui-today.png) | ![Today in dark mode](docs/img/gui-today-dark.png) |
 
 | Inbox | Usage & cost |
 |---|---|
@@ -181,7 +189,7 @@ Prestige roles (frontier-lab fellowships, residencies, pre-docs, safety programs
 
 Add `force` to a job command to prepare a job the eligibility gate rejected (`/packet <job> force`).
 
-![Ask the agent with slash commands](docs/img/gif-ask-the-agent.gif)
+(See the GIF at the top of this page.)
 
 **The agent loop** (`/agent <goal>` or `jobagent agent "<goal>"`) handles multi-step goals with tools:
 - search the pipeline, and **recall** what is already known (retrieval over jobs, plans, people and memory)

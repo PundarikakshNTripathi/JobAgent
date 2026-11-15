@@ -1,4 +1,5 @@
-"""JobAgent CLI.   python agent/run.py <command> [args]
+"""JobAgent: Find the role. Reach the people. You press Submit.
+    python agent/run.py <command> [args]      (or: jobagent <command>)
 
  RUN        cycle                  poll all sources -> alert -> triage -> scout -> packets -> referral plans -> fill forms -> reflect -> dashboard
             poll | triage | scout  individual stages (poll costs no tokens)

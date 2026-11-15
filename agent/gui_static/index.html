@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JobAgent</title>
+<title>JobAgent: find the role, reach the people</title>
+<meta name="description" content="Find the role. Reach the people. You press Submit.">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Schibsted+Grotesk:wght@400;450;500;600;650;700&display=swap" rel="stylesheet">
 <style>
@@ -120,7 +121,7 @@ pre.log{background:var(--panel);border:1px solid var(--line);border-radius:12px;
 </head>
 <body>
 <div class="app">
-<aside id="side"><div class="brand"><img src="/favicon.svg?v=2" alt="">JobAgent</div><nav id="nav"></nav><div class="side-foot" id="foot">loading...</div></aside>
+<aside id="side"><div class="brand"><img src="/favicon.svg?v=2" alt="">JobAgent</div><nav id="nav"></nav><div class="side-foot"><div id="foot">loading...</div><div style="margin-top:10px;opacity:.75">You press Submit.</div></div></aside>
 <main>
   <div class="top">
     <button class="btn sq menu-btn" onclick="document.getElementById('side').classList.toggle('on')" aria-label="Menu"><svg class="i" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
@@ -343,7 +344,7 @@ async function saveAuto(){const g=id=>$(id),n=id=>+g(id).value,b={};CFG.provider
 async function setTimes_(){const ts=$('s-times').value.split(/[ ,]+/).map(x=>x.trim()).filter(x=>/^\d{1,2}:\d\d$/.test(x)).map(x=>x.padStart(5,'0'));if(!ts.length)return toast('Use times like 09:00, 18:00');await post('/api/schedule',{times:ts});toast('Schedule: '+ts.join(', '));setTimeout(loadSettings,1500)}
 async function testProv(n,btn){btn.innerHTML='<span class="spin"></span>';const r=await post('/api/provider-test',{name:n});btn.textContent='Test';toast(r.ok?`${n}: OK in ${r.seconds}s`:`${n}: ${esc(r.error||'failed')}`)}
 async function showBench(){const r=await api('/api/bench');const p=$('bench');p.style.display='block';p.textContent=r.report||'No benchmark yet today. Press "Benchmark providers on my data".'}
-function helpView(){return `<h2>Help</h2><p class="sub">Everything in two minutes. <button class="btn sm pri" onclick="startTour()">Take the guided tour</button></p><div class="two">
+function helpView(){return `<h2>Help</h2><p class="sub">JobAgent finds roles you can actually get, finds the people who can refer you, and prepares everything up to the last click. You press Submit. Everything in two minutes. <button class="btn sm pri" onclick="startTour()">Take the guided tour</button></p><div class="two">
  <div class="card"><h3 style="margin-top:0">The loop</h3><div class="md"><p>JobAgent polls hundreds of company career pages, filters them against your profile (including the years of experience in the job description), has a model judge the best ones, prepares a cover letter and answers, plans who to contact for a referral, and can fill the form. <b>You press Submit.</b></p></div></div>
  <div class="card"><h3 style="margin-top:0">Daily routine</h3><div class="md"><ul><li><b>Today</b>: read the plan, tick tasks.</li><li><b>Ready to submit</b>: review the filled form, submit, mark applied.</li><li><b>All jobs</b>: filter like a job board; every row links to the posting.</li><li><b>My picks</b>: everything you prepared yourself.</li></ul></div></div>
  <div class="card"><h3 style="margin-top:0">Found something yourself?</h3><div class="md"><p>Paste it in <b>Inbox</b>, or tell <b>Ask the agent</b>. Items are stored, so a quota hit never loses them.</p></div></div>
@@ -392,7 +393,7 @@ function tourStep(){const s=TOUR[TOURI];const el=document.querySelector(s[0]);if
  $('side').classList.add('on');el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect(),h=$('hole'),t=$('tip');h.style.cssText=`left:${r.left-6}px;top:${r.top-6}px;width:${r.width+12}px;height:${r.height+12}px`;
  t.innerHTML=`<h4>${s[1]}</h4><p>${s[2]}</p><div class="row"><span class="tm">${TOURI+1} / ${TOUR.length}</span><span class="grow"></span><button class="btn sm ghost" onclick="endTour()">Skip</button>${TOURI?'<button class="btn sm" onclick="TOURI--;tourStep()">Back</button>':''}<button class="btn sm pri" onclick="${TOURI==TOUR.length-1?'endTour()':'TOURI++;tourStep()'}">${TOURI==TOUR.length-1?'Done':'Next'}</button></div>`;
  const tw=Math.min(360,innerWidth*.92);let left=s[3]=='right'?r.right+16:r.left;let top=s[3]=='right'?Math.max(12,r.top):r.bottom+16;if(left+tw>innerWidth-8)left=Math.max(8,innerWidth-tw-8);t.style.left=left+'px';t.style.top=Math.min(top,innerHeight-190)+'px'}
-function showSetup(){if($('setup').classList.contains('on'))return;$('setup').classList.add('on');$('setupbox').innerHTML=`<h2 style="margin-top:0">Welcome to JobAgent</h2><p class="sub">Tell it who you are. This stays on your machine, in <code>${esc(S.home)}</code>. You can refine everything later.</p>
+function showSetup(){if($('setup').classList.contains('on'))return;$('setup').classList.add('on');$('setupbox').innerHTML=`<h2 style="margin-top:0">Welcome to JobAgent</h2><p class="sub" style="margin-bottom:8px">Find the role. Reach the people. You press Submit.</p><p class="sub">Tell it who you are. This stays on your machine, in <code>${esc(S.home)}</code>. You can refine everything later.</p>
  ${[['name','Full name'],['email','Email'],['phone','Phone (optional)'],['location','City, country'],['linkedin','LinkedIn URL (optional)'],['github','GitHub URL (optional)'],['website','Website / portfolio (optional)'],['education','Education (degree, school, expected graduation)'],['graduation','Graduation (YYYY-MM)'],['home_country','Country you are authorised to work in'],['resume_pdf','Path to your resume PDF (optional)']].map(([k,l])=>`<div class="field"><label>${l}</label><input id="su-${k}"></div>`).join('')}
  <div class="field"><label>About you in 2-3 sentences: what you build, what you want next</label><textarea id="su-summary" rows="3"></textarea></div><div class="field"><label>Your strongest projects/experience, one per line ("Name: what it is + one measured result")</label><textarea id="su-projects" rows="4"></textarea></div><button class="btn pri" onclick="saveSetup()">Save and start the tour</button>`}
 async function saveSetup(){const keys=['name','email','phone','location','linkedin','github','website','education','graduation','home_country','resume_pdf','summary','projects'];const b={};keys.forEach(k=>b[k]=$('su-'+k).value);if(!b.name.trim())return toast('Name is required');await post('/api/setup',b);$('setup').classList.remove('on');toast('Profile saved');await load();startTour()}

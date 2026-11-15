@@ -28,7 +28,8 @@ pkg_install() { # best effort, asks first
   else return 1; fi
 }
 
-say "JobAgent installer ($(uname -s) $(uname -m))"
+say "JobAgent: Find the role. Reach the people. You press Submit."
+say "Installer for $(uname -s) $(uname -m)"
 # 1. Python 3.10+
 PY=""
 for c in python3.13 python3.12 python3.11 python3.10 python3; do

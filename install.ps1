@@ -11,7 +11,8 @@ function Warn($m) { Write-Host "!!  $m" -ForegroundColor Yellow }
 function Ask($q, $d) { if ($Defaults) { return $d }; $a = Read-Host "$q [$d]"; if ([string]::IsNullOrWhiteSpace($a)) { $d } else { $a } }
 function Have($c) { [bool](Get-Command $c -ErrorAction SilentlyContinue) }
 
-Say "JobAgent installer (Windows)"
+Say "JobAgent: Find the role. Reach the people. You press Submit."
+Say "Installer for Windows"
 # 1. Python 3.10+
 $Py = $null
 foreach ($c in @("py -3.13", "py -3.12", "py -3.11", "py -3.10", "python")) {

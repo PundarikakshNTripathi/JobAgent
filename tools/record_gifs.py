@@ -52,6 +52,28 @@ with sync_playwright() as p:
     page.add_init_script("try { localStorage.setItem('ja-tour','1'); localStorage.setItem('ja-theme','light') } catch (e) {}")  # no tour overlay
     r = Rec(page)
 
+    # 0. Hero: the whole story in ~12 seconds. Next action -> who you know -> the referral plan -> asking the agent
+    fresh(page, "today")
+    r.hold(2200)
+    page.evaluate("() => go('picks')")
+    page.wait_for_timeout(1200)
+    r.hold(2200)
+    page.locator("#picks-list button", has_text="Open").first.click()
+    page.wait_for_timeout(800)
+    page.locator("#dt button", has_text="Referral").first.click()
+    page.wait_for_timeout(700)
+    r.hold(2800)
+    page.evaluate("() => closeDrawer()")
+    page.evaluate("() => go('chat')")
+    page.wait_for_timeout(1500)
+    page.click("#chat-in")
+    r.type("#chat-in", "/top 3", 90)
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(1500)
+    page.evaluate("() => { const b = document.getElementById('chatbox'); b.scrollTop = b.scrollHeight }")
+    r.hold(2800)
+    r.save("gif-hero.gif", width=1100)
+
     # 1. Ask the agent with slash commands (instant, no model needed)
     fresh(page, "chat")
     page.evaluate("() => { const b = document.getElementById('chatbox'); b.scrollTop = b.scrollHeight }")

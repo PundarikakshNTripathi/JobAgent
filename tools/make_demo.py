@@ -17,8 +17,14 @@ setup.create_profile({"name": "Alex Rivera", "email": "alex@example.com", "locat
                       "projects": ["KernelKit: fused attention kernels in Triton, 1.8x faster than the reference on an RTX 4060",
                                    "TinyServe: an LLM inference server with paged KV cache, 2.3x throughput at batch 16"],
                       "home_country": "India", "work_authorization": "Authorised to work in India"})
-common.save_override("settings.json", {"ui": {"logos": False}})  # fictional companies must not pick up real companies' logos
+# Fictional companies get their own drawn logos (tools/demo_logos.py), pre-filled in the cache, so nothing is fetched and no real company's
+# logo is ever shown next to a made-up posting.
+common.save_override("settings.json", {"ui": {"logos": True}})
 common.reload_config()
+import logos as _logos  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import demo_logos  # noqa: E402
+demo_logos.write(_logos.CACHE, lambda n: _logos._slug(_logos._SUFFIX.sub("", n)) or "x")
 c = common.db()
 now = dt.datetime.now()
 ts = lambda h=0: (now - dt.timedelta(hours=h)).isoformat(timespec="seconds")

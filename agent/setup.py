@@ -55,7 +55,7 @@ def recommended_routing(ready):
 
 def wizard(defaults=False, reconfigure=False):
     """Interactive first-run setup. defaults=True accepts every default (unattended installs, CI). Only asks where your choice matters."""
-    print(f"JobAgent setup. Your personal data will live in: {HOME}\n(nothing personal is ever stored in the code folder; press Enter to accept the [default])\n")
+    print(f"JobAgent: Find the role. Reach the people. You press Submit.\n\nSetup. Your personal data will live in: {HOME}\n(nothing personal is ever stored in the code folder; press Enter to accept the [default])\n")
 
     def ask(q, d=""):
         if defaults:
