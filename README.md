@@ -1,4 +1,5 @@
-# JobAgent
+<p align="center"><img src="docs/img/logo.svg" width="72" alt="JobAgent logo"></p>
+<h1 align="center">JobAgent</h1>
 
 A local job-search agent that works like a sharp, tireless assistant:
 - It watches hundreds of career pages and reads every promising job description in full.
@@ -9,7 +10,9 @@ A local job-search agent that works like a sharp, tireless assistant:
 
 **It never presses Submit. You do.** Everything personal stays on your computer.
 
-![Today view](docs/img/gui-today.png)
+| Today, light | Today, dark |
+|---|---|
+| ![Today](docs/img/gui-today.png) | ![Today in dark mode](docs/img/gui-today-dark.png) |
 
 Works with the AI you already have, alone or mixed:
 - **CLI tools:** Claude Code, Google Antigravity (Gemini), Codex, Gemini CLI.
@@ -121,24 +124,32 @@ Prestige roles (frontier-lab fellowships, residencies, pre-docs, safety programs
 
 ## 4. The app (GUI)
 
-`jobagent gui` (or `start_gui.bat` on Windows). It runs on localhost only, has light and dark themes, and works at phone width.
+`jobagent gui` (or `start_gui.bat` on Windows). It runs on localhost only, has light and dark themes, works at phone width, and has a command palette (**Ctrl K** / **⌘ K**). The interface loads two typefaces from Google Fonts and falls back to system fonts offline.
 
 | View | What it is for |
 |---|---|
-| **Today** | Headline numbers, forms waiting for you, the day's plan, the watchlist. |
+| **Today** | Opens with your next action ("2 forms are waiting for your Submit"), then the forms waiting for you, the day's plan and the watchlist. |
 | **All jobs** | A job-board browser over every posting, with filters for keywords, role family, level, years of experience, location, visa, company tier, source and freshness. Every row opens the employer's posting. |
 | **My picks** | Everything *you* chose to work on: a step tracker (application, referral plan, resume advice, form filled), a **May not fit** badge when the job description rules you out, and **Who you know there** with profile links. |
 | **Ready to submit / Needs you** | Filled forms waiting for your Submit, and the exact fields that need you. |
 | **Watchlist / Programs** | Prestige roles and fellowships: deadlines, eligibility, referral state. |
 | **Inbox** | Paste links or texts you found anywhere. Each is processed, stored, and retried if a model was busy. |
-| **Ask the agent** | Chat plus slash commands (section 5). |
+| **Ask the agent** | Chat plus slash commands (section 5). Ctrl K opens the same commands from anywhere. |
 | **My voice** | Your real sent messages and your edits to drafts, so outreach sounds like you. |
 | **Usage & cost** | Calls and tokens per provider and task, today, this week and this month. |
 | **Settings** | Providers and which model does which job, schedule times, daily limits, budgets, notifications, local AI. |
 
-| All jobs | My picks |
-|---|---|
-| ![All jobs](docs/img/gui-all-jobs.png) | ![My picks](docs/img/gui-my-picks.png) |
+**All jobs:** filter like a job board, then reset in one click.
+
+![Filtering All jobs](docs/img/gif-all-jobs.gif)
+
+**My picks:** what you're working on, who you know at each company, and the referral plan.
+
+![My picks and a referral plan](docs/img/gif-my-picks.gif)
+
+**Ctrl K anywhere:** jump to any view, find a job by name, or run a / command.
+
+![Command palette](docs/img/gif-command-palette.gif)
 
 | Inbox | Usage & cost |
 |---|---|
@@ -170,7 +181,7 @@ Prestige roles (frontier-lab fellowships, residencies, pre-docs, safety programs
 
 Add `force` to a job command to prepare a job the eligibility gate rejected (`/packet <job> force`).
 
-![Ask the agent](docs/img/gui-ask-the-agent.png)
+![Ask the agent with slash commands](docs/img/gif-ask-the-agent.gif)
 
 **The agent loop** (`/agent <goal>` or `jobagent agent "<goal>"`) handles multi-step goals with tools:
 - search the pipeline, and **recall** what is already known (retrieval over jobs, plans, people and memory)
@@ -302,6 +313,56 @@ Measured on an RTX 5060 Laptop (8 GB) with Qwen3.5-9B Q4_K_M:
 | Agreement with Claude on triage | 90% (27 of 30 jobs) |
 | Time for those 30 jobs | 66 s |
 
+### Which tasks should go to the local model (and how to set it)
+
+`local-bench --apply` sets a safe default. This is the full map, with the reasoning, if you want to tune it yourself. Set it in **Settings → Which model does which job**, or in `<workspace>/config/settings.json`:
+
+| Task | Local model? | Why |
+|---|---|---|
+| `triage` | **yes** | Batch classification with a reason per job. Constrained JSON keeps it valid, and a hosted second opinion catches borderline skips. |
+| `ingest` | **yes** | Extracts jobs from pasted text and links into a fixed schema. |
+| `rank` | **yes** | Ranks people already seen on LinkedIn. It can only choose from that list. |
+| `browse` | **yes** | One read-only browsing decision per page (which link next). |
+| `webplan` | **yes** | Writes search queries for research. |
+| `today`, `reflect`, `scout` | **yes** | Short plans and memory updates; reasoning mode is on for these. |
+| `chat`, `agent` | hosted (local as fallback) | Multi-step judgement over many tools is where bigger models are clearly better. The local model takes over when hosted quotas run out, with schema-constrained tool calls. |
+| `packet`, `outreach`, `resume` | hosted | Writing a person reads: tone and judgement matter most. |
+| `referral` | hosted with web | Research needs live web search. |
+| `fill`, `linkedin`, `yc` | hosted | Form mapping touches legal answers; the browser fallback needs a browser-capable provider. |
+
+```json
+{
+  "llm": {
+    "routing": {
+      "triage": {"provider": "local", "model": "local"},
+      "ingest": {"provider": "local", "model": "local"},
+      "rank":   {"provider": "local", "model": "local"},
+      "browse": {"provider": "local", "model": "local"},
+      "webplan":{"provider": "local", "model": "local"},
+      "today":  {"provider": "local", "model": "local"},
+      "reflect":{"provider": "local", "model": "local"},
+      "scout":  {"provider": "local", "model": "local"},
+      "chat":   {"provider": "claude", "effort": "low"},
+      "agent":  {"provider": "claude", "effort": "medium"},
+      "packet": {"provider": "claude", "effort": "high"}
+    },
+    "fallbacks": ["claude", "agy", "local"],
+    "local": {
+      "model": "unsloth/Qwen3.5-9B-GGUF:Q4_K_M",
+      "ctx": 32768, "max_tokens": 6144, "max_tokens_thinking": 4096,
+      "thinking_kinds": ["reflect", "today", "chat"],
+      "second_opinion_min_score": 66, "second_opinion_max": 6,
+      "keep_running": false, "autostart": true
+    }
+  }
+}
+```
+
+**Tuning knobs:**
+- `thinking_kinds`: tasks where the model reasons before answering.
+- `second_opinion_*`: when the hosted model re-checks a local SKIP.
+- `keep_running`: keep the model loaded on the GPU between runs.
+
 Why not a bigger model on an 8 GB laptop? 30–35B MoE models such as Qwen3.6-35B-A3B or GLM-4.7-Flash need about 18–20 GB of weights. With CPU offload that fits a 24 GB-VRAM card or a Linux machine with plenty of free RAM, but on an 8 GB laptop running Windows it pages and crawls. Writing that a human reads (cover letters, outreach, resume advice) stays on your best hosted model either way.
 
 Other commands: `local-status`, `local-start`, `local-stop`, `local-bench [--apply]`. Ollama and LM Studio also work, as OpenAI-compatible providers.
@@ -309,6 +370,20 @@ Other commands: `local-status`, `local-start`, `local-stop`, `local-bench [--app
 `jobagent bench` compares your providers on your own data: agreement, speed, tokens, and whether research links are alive.
 
 ---
+
+### Context management and guardrails
+
+These apply to every model, hosted or local.
+
+| Risk | What JobAgent does |
+|---|---|
+| **Invented facts** in letters, answers and messages | Every figure (metrics, percentages, counts with units) is checked against your profile, the job description and the research it was given. An unsupported figure goes into the one batched rewrite with "remove it or use a number from the profile", and anything left is flagged in the packet. Your profile's hard rules ("one internship, no publications") are in every writing prompt. |
+| **Made-up people or links** | Referral plans only contain people actually seen on LinkedIn or on a page that was read. Links in chat and agent answers that never appeared in a source or tool result are removed and the removal is noted. |
+| **Context rot** (long prompts, stale or irrelevant context) | Prompts carry the few items retrieved for the question (full-text search over jobs, plans, people, facts, memory), not dumps. The agent loop folds older tool results into short notes. A prompt that would exceed a model's context budget goes to a model whose window fits, so it is never silently truncated. |
+| **Broken tool calls** | Agent steps and structured tasks are JSON. On the local model they are grammar-constrained to a schema, so a malformed call can't happen. Unknown ids, verdicts or out-of-range scores are rejected or clamped. |
+| **Overconfident small model** | Batch tasks answer directly instead of thinking without end. The local model must agree with your main model at least 85% of the time before it gets work, and borderline skips get a hosted second opinion. |
+| **Quota exhaustion mid-task** | Background quality work waits for its own provider; interactive work falls back down the chain, ending at the local model. |
+
 
 ## 11. Cost and quota control
 
@@ -439,5 +514,6 @@ Anything left empty in `form_defaults` is never guessed: it shows up under **Nee
   - `defaults/`: shipped config and skills.
   - Design notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Tests:** `python -m unittest discover -s tests` runs against a throwaway workspace. CI runs them on Ubuntu, macOS and Windows.
-- **Demo data:** `python tools/make_demo.py <folder>` builds a workspace with fictional companies and people. Open it with `JOBAGENT_HOME=<folder> python agent/run.py gui`. The screenshots in this README come from it.
+- **Demo data:** `python tools/make_demo.py <folder>` builds a workspace with fictional companies and people. Open it with `JOBAGENT_HOME=<folder> python agent/run.py gui`.
+- **Images in this README:** come from the demo. Run `tools/screenshots.py` and `tools/record_gifs.py --url <gui url>`; these need Pillow, `python -m pip install pillow`.
 - **Publishing a copy:** the tree contains no personal data, but the git history of a personal fork may. Start a fresh history before making a copy public, and never commit a workspace.

@@ -54,7 +54,18 @@ for jid, acts in (("greenhouse:northwind:101", "packet,referral"), ("lever:conto
     c.execute("INSERT OR REPLACE INTO picks(job_id,ts,actions) VALUES(?,?,?)", (jid, ts(5), acts))
     d = os.path.join(common.OUT, "applications", jid.replace(":", "_"))
     os.makedirs(d, exist_ok=True)
-    open(os.path.join(d, "README.md"), "w").write("# Application packet (sample)\n")
+    open(os.path.join(d, "README.md"), "w").write("# Application packet (sample)\n\n## Fit\nStrong: paged KV cache and fused kernels match the role.\n\n## Gaps\nNo production on-call experience yet.\n")
+    open(os.path.join(d, "cover_letter.txt"), "w").write("Hi team,\n\nI build inference systems for fun and for coursework. TinyServe, my small LLM server with a paged KV cache, "
+                                                          "reached 2.3x throughput at batch 16 on one GPU, and KernelKit's fused attention runs 1.8x faster than the reference.\n\n"
+                                                          "I'd like to bring that to the inference team.\n\nAlex")
+    if "referral" in acts:
+        open(os.path.join(d, "REFERRAL.md"), "w").write(
+            "# Referral plan (sample)\n\n## Strategy\nPriya is a 1st-degree connection on the serving team: ask her for ten minutes of advice first. "
+            "Daniel leads ML platform; reach him through Sam Lee, who knows you both.\n\n## Target 1: Priya Sharma (Inference Engineer)\n"
+            "Profile: https://www.linkedin.com/in/demo-priya-sharma/\nReach via: LinkedIn message (1st degree)\n\n**Message (short)**\n"
+            "Hi Priya, I saw your post on paging the KV cache. I built something similar in TinyServe (2.3x at batch 16). "
+            "Could I ask how the inference intern team picks projects?\n\n## Target 2: Daniel Okafor (ML Platform Lead)\n"
+            "Profile: https://www.linkedin.com/in/demo-daniel-okafor/\nReach via: intro via Sam Lee (2nd degree)\n")
     if "packet" in acts:
         c.execute("INSERT OR REPLACE INTO packets(job_id,dir,at,referral_at,filled_at) VALUES(?,?,?,?,?)", (jid, d, ts(5), ts(4) if "referral" in acts else None, ts(3) if "fill" in acts else None))
     if "referral" in acts:
