@@ -15,6 +15,8 @@
  SETUP      init                  create your workspace + profile (interactive)      doctor   check everything
             providers [test <name>]   list/test LLM providers      bench [n]   benchmark providers on your data
             app / shortcuts       desktop window / Start-menu entry
+            rebuild <id> [packet,referral,resume|all]   redo one job's material with your notes for it
+            signals [collect|queue|list]   fresh hiring posts + seed rounds -> today's 20 direct-outreach targets
             gui [--no-open]       local web GUI                       yc-profile  rewrite your YC profile (truthful)
  SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-times HH:MM [HH:MM]   (default 09:00 18:00)
  MEMORY     reflect               update the agent's memory + scoring tweaks from your outcomes
@@ -59,6 +61,12 @@ def cycle():
         stage("Polling job boards")
         new_ids, first = pipeline.poll()
         pipeline.instant_alerts(new_ids, first)
+        stage("Catching fresh hiring posts and seed rounds")
+        try:
+            import signals
+            signals.run_all()
+        except Exception as ex:
+            log(f"signals failed: {ex}")
         stage("Refreshing what you are working on")
         try:
             import maintenance
@@ -253,6 +261,34 @@ def main():
     elif cmd == "triage":
         import pipeline
         pipeline.triage()
+    elif cmd in ("signals", "outreach"):
+        # signals [collect|queue|list]: fresh hiring posts (X, LinkedIn) and seed rounds -> today's direct-outreach queue (you write every email)
+        import signals
+        sub = a[1] if len(a) > 1 else "collect"
+        if sub == "list":
+            print(signals.text_list(signals.today()))
+        else:
+            print(signals.run_all(collect=(sub != "queue")))
+            print(signals.text_list(signals.today()))
+    elif cmd == "rebuild":
+        # rebuild <id> [packet,referral,resume|all] [--force]: redo the chosen material for one job, in order, with your notes for it attached
+        import packets, referrals, resume
+        parts = [x for x in (a[2] if len(a) > 2 and not a[2].startswith("--") else "all").split(",") if x]
+        parts = ["packet", "referral", "resume"] if "all" in parts else parts
+        common.add_pick(a[1], parts[0] if parts else "packet")
+        for part in parts:
+            print(f"=== {part.upper()} ===")
+            try:
+                if part == "packet":
+                    print(packets.build_packet(a[1], force=True if force else False))
+                elif part == "referral":
+                    print(referrals.plan_referral(a[1], manual=True, force=force))
+                elif part == "resume":
+                    print(resume.advise(a[1]))
+                else:
+                    print(f"unknown part {part!r} (use packet, referral, resume or all)")
+            except Exception as e:
+                print(f"{part} failed: {str(e)[:400]}")
     elif cmd == "packet":
         import packets
         print(packets.build_packet(a[1], force=force))

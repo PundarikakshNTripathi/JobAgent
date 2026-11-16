@@ -30,8 +30,22 @@ def run():
                            experience=" | ".join(PROFILE["experience"]), projects=" | ".join(PROFILE["projects"]), achievements=" | ".join(PROFILE["achievements"]),
                            skills=PROFILE["skills_defensible"], website=PROFILE["website"], github=PROFILE.get("github", ""), org_github=PROFILE.get("org_github", ""), linkedin=PROFILE.get("linkedin", ""), rules=" ".join(PROFILE.get("hard_rules", [])),
                            twitter=PROFILE.get("twitter", ""), org_site=(PROFILE.get("organization") or {}).get("site", ""), org_status=(PROFILE.get("organization") or {}).get("status", ""))
-    text, _ = run_claude(prompt, kind="yc", allowed_tools="mcp__fillbrowser", timeout=900, max_turns=60, mcp_config=mp, persist=True)
-    r = extract_json(text)
+    r = None
+    try:  # JobAgent's own browser loop: any provider can do this (Claude, Gemini/agy, GPT, local)
+        import webagent
+        goal = prompt.split("PROCEDURE")[0] + ("PROCEDURE\n1. Open the edit-profile page (profile/avatar link, or /candidate/... ) and read every field.\n"
+                                              "2. Rewrite each field from the facts above only; fill empty sections that have a matching fact.\n"
+                                              "3. Press Save, then re-read the page to confirm the changes persisted.")
+        w = webagent.run(goal, "https://www.workatastartup.com/", mode="save", kind="yc", max_steps=60,
+                         result_hint='{"before":"","changes":[""],"left_unchanged":[""],"saved":true,"notes":""}')
+        r = w["result"] if isinstance(w["result"], dict) and "error" not in w["result"] else None
+        if r is None:
+            log(f"YC profile via the browser loop did not finish: {str(w['result'])[:200]}")
+    except Exception as e:
+        log(f"YC profile via the browser loop failed: {str(e)[:200]}")
+    if r is None:  # last resort: a provider with its own browser tool (Claude Code + Playwright MCP)
+        text, _ = run_claude(prompt, kind="yc", allowed_tools="mcp__fillbrowser", timeout=900, max_turns=60, mcp_config=mp, persist=True)
+        r = extract_json(text)
     md = ["# YC Work at a Startup profile: before / after", "", f"Saved: {r.get('saved')}", "", "## Before", r.get("before", ""), "", "## Changes", *[f"- {c}" for c in r.get("changes", [])], "",
           "## Left unchanged", *[f"- {c}" for c in r.get("left_unchanged", [])], "", r.get("notes", "")]
     open(os.path.join(OUT, "yc_profile_before_after.md"), "w", encoding="utf-8").write("\n".join(md))

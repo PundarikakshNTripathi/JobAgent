@@ -318,7 +318,7 @@ def _http(url, body, headers, timeout):
 
 
 JSON_KINDS = ["triage", "bench", "rank", "ingest", "browse", "agent", "chat", "summary", "packet", "outreach", "resume", "referral", "scout",
-              "today", "reflect", "fill", "yc", "scout-plan", "packet-plan", "referral-plan", "webplan"]
+              "today", "reflect", "fill", "yc", "scout-plan", "packet-plan", "referral-plan", "webplan", "linkedin", "signals", "angles"]
 _THINK = re.compile(r"<think>.*?</think>\s*", re.S)
 
 
@@ -432,9 +432,9 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
             chain.append({"provider": fb, "model": "", "effort": primary.get("effort", "medium")})
     cacheable = not mcp_config and not need_web
     if cacheable:
-        hit = cache_get(kind, primary, prompt)
+        hit = cache_get(kind, chain[0], prompt)  # chain[0] is the provider actually asked for (an explicit provider never reads another's answer)
         if hit is not None:
-            return hit, {"provider": primary["provider"], "usage": {}, "cached": True}
+            return hit, {"provider": chain[0]["provider"], "usage": {}, "cached": True}
     errors = []
     for route in chain:
         name = route["provider"]
@@ -472,8 +472,8 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
                 _set_cooldown(name, str(e))
             continue
         _log_usage(kind, name, route.get("model"), usage, time.time() - t0)
-        if cacheable and name == primary["provider"]:
-            cache_put(kind, primary, prompt, text)
+        if cacheable and name == chain[0]["provider"]:
+            cache_put(kind, chain[0], prompt, text)
         if name != primary["provider"] and not provider:
             log(f"llm {kind}: fell back to {name}")
         return text, {"provider": name, "usage": usage}

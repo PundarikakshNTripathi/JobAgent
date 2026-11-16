@@ -210,6 +210,7 @@ CREATE TABLE IF NOT EXISTS people(url TEXT PRIMARY KEY, company TEXT, name TEXT,
 CREATE INDEX IF NOT EXISTS people_company ON people(company);
 CREATE TABLE IF NOT EXISTS llm_cache(k TEXT PRIMARY KEY, kind TEXT, text TEXT, at REAL);
 CREATE TABLE IF NOT EXISTS company_meta(k TEXT PRIMARY KEY, company TEXT, domain TEXT, logo_url TEXT, source TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS job_notes(id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT, ts TEXT, text TEXT);
 CREATE TABLE IF NOT EXISTS threads(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, created TEXT, updated TEXT, summary TEXT DEFAULT '', summarized_upto INTEGER DEFAULT 0);
 """
 
@@ -363,6 +364,43 @@ def backfill_picks():
         n += 1
     c.commit()
     return n
+
+
+def add_job_note(job_id, text):
+    """Your own instructions for one job ("lead with the kernel work", "contact the hiring manager first"). Every later preparation of that
+    job sees them (see job_context)."""
+    text = (text or "").strip()[:2000]
+    if not text:
+        return
+    c = db()
+    c.execute("INSERT INTO job_notes(job_id, ts, text) VALUES(?,?,?)", (job_id, now(), text))
+    c.commit()
+
+
+def job_notes(job_id):
+    return [dict(r) for r in db().execute("SELECT id, ts, text FROM job_notes WHERE job_id=? ORDER BY id", (job_id,)).fetchall()]
+
+
+def job_context(job_id, kind):
+    """Block appended to a preparation prompt when you left instructions for this job: the instructions, and for the application and resume
+    advice the previous version to revise. Old referral plans are not included on purpose, so outdated claims can't carry over."""
+    notes = job_notes(job_id)
+    if not notes:
+        return ""
+    out = ["", "", "THE USER'S OWN INSTRUCTIONS FOR THIS JOB (newest last). Follow them; they never override the truthfulness and hard rules above, "
+           "and never justify inventing a fact, a person or a link:"]
+    out += [f"- ({n['ts'][:10]}) {n['text']}" for n in notes[-6:]]
+    if kind in ("packet", "resume"):
+        r = db().execute("SELECT dir FROM packets WHERE job_id=?", (job_id,)).fetchone()
+        fn = {"packet": "cover_letter.txt", "resume": "RESUME.md"}[kind]
+        try:
+            prev = open(os.path.join(r["dir"], fn), encoding="utf-8").read()[:2500] if r and r["dir"] else ""
+        except OSError:
+            prev = ""
+        if prev:
+            out.append("PREVIOUS VERSION (written before these instructions: keep what is good, change what they ask for):\n" + prev)
+    out.append("Keep exactly the output format asked for above.")
+    return "\n".join(out)
 
 
 def add_pick(job_id, action):

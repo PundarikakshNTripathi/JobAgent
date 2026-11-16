@@ -25,6 +25,8 @@ COMMANDS = [
     ("referral", "/referral <id or words>", "Plan who to approach and draft the messages (uses LinkedIn when allowed, else the public web; says which).", "Prepare"),
     ("linkedin", "/linkedin <id or words>", "Scout LinkedIn read-only through your logged-in agent Chrome: 1st then 2nd degree, who is likely to answer, how to approach.", "Prepare"),
     ("resume", "/resume <id or words>", "Resume tailoring advice for that job (truthful, nothing invented).", "Prepare"),
+    ("signals", "/signals", "Find fresh hiring posts (X, LinkedIn, under 24 h) and new seed rounds, and fill today's outreach queue (Outreach view).", "Run"),
+    ("rebuild", "/rebuild <id or words>", "Redo the application, referral plan and resume advice for that job, using any notes you left for it (Details -> Rebuild).", "Prepare"),
     ("fill", "/fill <id or words>", "Fill the application form in the agent browser. Never submits; you press Submit.", "Prepare"),
     ("mark", "/mark <id or words> applied|skip|dismissed [reason]", "Record an outcome; reasons teach the agent.", "Track"),
     ("add", "/add <link or text> [-- your context]", "Put an opportunity you found into the inbox and process it.", "Track"),
@@ -40,10 +42,10 @@ COMMANDS = [
     ("agent", "/agent <goal>", "Hand a multi-step goal to the autonomous agent loop (tools: search, packets, referrals, web).", "Run"),
 ]
 CMD = {c[0]: c for c in COMMANDS}
-JOB_CMDS = ("packet", "referral", "linkedin", "resume", "fill")
-PLAIN = ("scout", "today", "poll", "cycle", "yc-profile", "reflect")
+JOB_CMDS = ("packet", "referral", "linkedin", "resume", "fill", "rebuild")
+PLAIN = ("scout", "today", "poll", "cycle", "yc-profile", "reflect", "signals")
 # what natural-language chat may start by itself; these never change a job's status and never submit anything
-NL_AUTO = JOB_CMDS[:4] + PLAIN[:3] + ("yc-profile", "retry", "remember", "ingest", "connections")
+NL_AUTO = JOB_CMDS[:4] + PLAIN[:3] + ("yc-profile", "retry", "remember", "ingest", "connections", "signals")
 NL_NEEDS_WORDS = {"fill": r"\bfill|auto-?fill", "mark": r"\b(mark|applied|skip|dismiss|ignore|reject)", "agent": r"\bagent|work on|figure out|research|find out|do this|take care"}
 
 

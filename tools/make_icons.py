@@ -14,7 +14,8 @@ def render(size):
     import fill
     exe = next((p for p in fill.CHROME_CANDIDATES if os.path.exists(p)), None)
     svg = open(os.path.join(STATIC, "favicon.svg"), encoding="utf-8").read()
-    html = f"<html><body style='margin:0;background:transparent'><div style='width:{size}px;height:{size}px'>{svg.replace('<svg ', f'<svg width=\"{size}\" height=\"{size}\" ', 1)}</div></body></html>"
+    sized = svg.replace("<svg ", '<svg width="%d" height="%d" ' % (size, size), 1)  # (no backslashes inside f-strings: Python 3.10)
+    html = f"<html><body style='margin:0;background:transparent'><div style='width:{size}px;height:{size}px'>{sized}</div></body></html>"
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch()
         pg = b.new_page(viewport={"width": size, "height": size})

@@ -51,6 +51,8 @@ def advise(job_id):
     prompt = PROMPT.format(skill=memory.skill("resume-tailoring"), facts=outreach.facts() + " | HARD RULES: " + " ".join(PROFILE.get("hard_rules", []))[:900], resume=resume_text(),
                            company=job["company"], title=job["title"], location=job["location"], desc=desc[:3500],
                            triage=(f"fit {tri['fit']}, resume {tri['resume']}, gap: {tri['yoe_gap']}, reason: {tri['reason']}" if tri else "none"))
+    import common
+    prompt += common.job_context(job_id, "resume")
     text, _ = run(prompt, kind="resume", timeout=400, max_turns=2)
     d = extract_json(text)
     pk = c.execute("SELECT dir FROM packets WHERE job_id=?", (job_id,)).fetchone()

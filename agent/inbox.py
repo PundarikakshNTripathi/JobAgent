@@ -188,7 +188,7 @@ ACTION KINDS (kind: arg)
   resume: <target>          resume tailoring advice
   fill: <target>            fill the form in the agent browser (never submits); only when the user asked to fill
   mark: <target> applied|skip|dismissed [reason]     only when the user said so
-  scout | today | poll | yc-profile | retry-inbox: (no arg)
+  scout | today | poll | yc-profile | retry-inbox | signals: (no arg; signals = find fresh hiring posts and seed rounds for direct outreach)
   remember: <fact about the user or a preference>
   ingest: <text or link the user gave>
   agent: <goal>             a multi-step goal for the autonomous agent loop (research that needs several steps)
@@ -211,7 +211,7 @@ USER: {text}
 Reply with ONE JSON object and nothing else:
 {{"reply": "your answer to the user", "actions": [{{"kind": "packet", "arg": "datadog applied science"}}]}}   (actions may be [])"""
 
-ALLOWED_ACTIONS = ("packet", "referral", "linkedin", "connections", "resume", "fill", "mark", "remember", "ingest", "agent", "retry-inbox", "scout", "today", "poll", "yc-profile")
+ALLOWED_ACTIONS = ("packet", "referral", "linkedin", "connections", "resume", "fill", "mark", "remember", "ingest", "agent", "retry-inbox", "scout", "today", "poll", "yc-profile", "signals")
 SUMMARY = """Summarise the older part of a conversation between a user and their job-search assistant, for the assistant's own memory.
 Keep only facts that were actually said: decisions, preferences, jobs and companies discussed (with ids), people named, actions started and their results,
 open questions. No advice, no new facts, no guesses. At most 12 short lines.

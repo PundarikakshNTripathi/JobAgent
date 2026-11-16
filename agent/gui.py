@@ -10,7 +10,7 @@ STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui_static", 
 # command -> needs an argument?
 ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "today": False, "dashboard": False, "usage": False, "yc-profile": False, "inbox": False,
            "reflect": False, "bench": False, "inbox-retry": False, "enable-schedule": False, "disable-schedule": False, "packet": True, "referral": True, "resume": True, "fill": True,
-           "linkedin": True, "mark": True, "agent": True, "retry": False}
+           "linkedin": True, "mark": True, "agent": True, "retry": False, "rebuild": True, "signals": False}
 SETTING_KEYS = {"poll_every_minutes", "min_heuristic_score_for_llm", "instant_alert_score", "max_triage_calls_per_day", "triage_batch_size", "max_triage_per_cycle", "triage_desc_chars",
                 "max_packets_per_day", "packet_min_fit", "max_referrals_per_day", "max_linkedin_per_day", "linkedin_browse", "max_fills_per_day", "auto_fill", "fill_window_local_hours",
                 "scout_every_days", "guard_minutes", "notify", "web", "humanize", "memory", "agent_mode", "llm", "include_new_grad_list", "recent_days_github_lists"}
@@ -338,6 +338,16 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._j(browse_jobs(q))
             if path == "/api/facets":
                 return self._j(job_facets())
+            if path == "/api/signals":
+                import signals
+                rows = signals.today()
+                conf = signals.cfg()
+                c = signals._table()
+                pool = c.execute("SELECT kind, COUNT(*) n FROM signals WHERE status='new' AND relevance>=55 GROUP BY kind").fetchall()
+                return self._j({"items": rows, "target": conf["daily_target"], "sent": sum(1 for r in rows if r["status"] == "sent"),
+                                "pool": {r["kind"]: r["n"] for r in pool}, "last": (db().execute("SELECT MAX(found) m FROM signals").fetchone() or {"m": ""})["m"] or ""})
+            if path == "/api/notes":
+                return self._j({"notes": common.job_notes((q.get("id") or [""])[0])})
             if path == "/api/packet":
                 return self._j(packet_files((q.get("id") or [""])[0]))
             if path == "/api/log":
@@ -388,6 +398,16 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._j({"error": "bad json"}, 400)
         path = urllib.parse.urlparse(self.path).path
         try:
+            if path == "/api/signals":
+                import signals
+                signals.mark(str(d.get("id", "")), str(d.get("status", "")), str(d.get("note", ""))[:500])
+                return self._j({"ok": True})
+            if path == "/api/rebuild":
+                jid, parts = str(d.get("id", "")).strip(), [x for x in (d.get("parts") or ["packet"]) if x in ("packet", "referral", "resume")]
+                if not jid or not parts:
+                    return self._j({"error": "needs a job id and at least one of packet, referral, resume"}, 400)
+                common.add_job_note(jid, str(d.get("note", "")))
+                return self._j(spawn("rebuild", f"{jid} {','.join(parts)}" + (" --force" if d.get("force") else "")))
             if path == "/api/run":
                 cmd, arg = d.get("cmd", ""), str(d.get("arg", "")).strip()
                 if cmd not in ALLOWED:

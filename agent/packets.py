@@ -1,5 +1,5 @@
 """Per-job application packet: fit analysis, cover letter (md + pdf), answers bank, resume choice."""
-import json, os, re, shutil, subprocess, memory, humanize
+import json, os, re, shutil, subprocess, memory, humanize, common
 from common import (db, log, now, run_claude, extract_json, slug, APPS, PROFILE, SETTINGS, budget_add, budget_used, http_json)
 
 PACKET_PROMPT = """You are preparing a job application for ONE candidate. You may use WebFetch/WebSearch to read the posting and research the company. Ground every company-specific statement in what you actually read; never invent facts about the company or the candidate.
@@ -105,6 +105,7 @@ def build_packet(job_id, force=False):
                                   company=job["company"], title=job["title"], location=job["location"], url=job["url"], ats=job["ats"],
                                   desc=(job["desc"] or "")[:3500], triage=triage_note, questions_block=qb,
                                   variants=json.dumps(PROFILE["resume_variant_guidance"]), auth_note=memory.auth_note())
+    prompt += common.job_context(job_id, "packet")
     text, _ = run_claude(prompt, kind="packet", allowed_tools="WebFetch,WebSearch",
                          timeout=SETTINGS["packet_timeout_s"], max_turns=14)
     p = extract_json(text)

@@ -143,6 +143,16 @@
         "provider": "auto",
         "model": "",
         "effort": "low"
+      },
+      "signals": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
+      },
+      "angles": {
+        "provider": "auto",
+        "model": "",
+        "effort": "medium"
       }
     },
     "fallbacks": [
@@ -272,5 +282,18 @@
     "referral_max_age_days": 21,
     "referral_refresh_per_run": 6,
     "time_box_s": 600
+  },
+  "signals": {
+    "enabled": true,
+    "daily_target": 20,
+    "max_age_hours": 24,
+    "max_likes": 100,
+    "seed_max_age_days": 7,
+    "x_accounts": [
+      "WalnutJobs",
+      "benln",
+      "katieschwartz",
+      "suraj_sharma14"
+    ]
   }
 }

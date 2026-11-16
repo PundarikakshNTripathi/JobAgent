@@ -5,7 +5,7 @@ over CDP. The agent can fill everything but is blocked from submitting:
      for `guard_minutes` after the run starts (longer than the agent's hard timeout), with a visible banner;
   3. hard subprocess timeout shorter than the guard window.
 You review the filled tab and press Submit yourself."""
-import json, os, shutil, socket, subprocess, time, urllib.request
+import json, os, re, shutil, socket, subprocess, time, urllib.request
 from common import db, log, now, run_claude, extract_json, DATA, SETTINGS, PROFILE, budget_add, notify
 
 PORT = SETTINGS["chrome_debug_port"]
@@ -181,6 +181,23 @@ def fill_job(job_id, force=False):
         log(f"formfill failed ({str(e)[:200]}); using the model-driven fill")
     if rep:
         return _finish(c, job, pk, job_id, rep)
+    prof = {k: PROFILE[k] for k in ("name", "first_name", "last_name", "email", "phone", "location", "linkedin", "github", "org_github", "website", "twitter", "education",
+                                    "graduation", "education_start_year", "education_notes", "summary", "experience", "projects", "achievements", "skills_defensible", "form_defaults") if k in PROFILE}
+    try:  # odd forms: JobAgent's own browser loop, driven by whichever provider is available (no provider-side browser needed)
+        import webagent
+        goal = FILL_PROMPT.split("CANDIDATE DATA")[0].replace("using the Playwright MCP tools", "").replace("- Open the application in a NEW tab (browser_tabs action=new) so earlier tabs stay open. Leave this tab open at the end.\n", "")
+        goal = re.sub(r"- Stay efficient:.*\n", "", goal).format(company=job["company"], title=job["title"], url=job["url"])
+        goal += ("CANDIDATE DATA\n" + json.dumps(prof, indent=1) + f"\n\nFILES: resume {data.get('resume_path', '')}; transcript {PROFILE.get('transcript_pdf', '(none)')}; "
+                 f"cover letter PDF {data.get('cover_pdf') or '(none: paste the text)'}\n\nCOVER LETTER TEXT\n{data.get('cover_letter', '')}\n\nPREPARED ANSWERS\n"
+                 + json.dumps(data.get("answers", {}), indent=1) + "\n\nFORM QUESTIONS\n" + json.dumps(data.get("form_questions", []), indent=1))
+        w = webagent.run(goal, job["url"], mode="form", kind="fill", max_steps=60, init_script=GUARD_JS % until, max_text=2500,
+                         result_hint='{"status":"READY_TO_SUBMIT|PARTIAL|BLOCKED","filled":[],"needs_user":[],"blocker":"","submit_button_label":"","page_url":""}')
+        if isinstance(w["result"], dict) and w["result"].get("status"):
+            rep = dict(w["result"], how="browser loop")
+            return _finish(c, job, pk, job_id, rep)
+        log(f"fill browser loop did not finish: {str(w['result'])[:200]}")
+    except Exception as e:
+        log(f"fill browser loop failed ({str(e)[:200]})")
     import browser
     mcp = {"mcpServers": {"fillbrowser": browser.npx_server(["@playwright/mcp@0.0.84", "--cdp-endpoint", f"http://127.0.0.1:{PORT}", "--init-script", guard, "--allow-unrestricted-file-access"])}}
     mcp_path = os.path.join(DATA, "mcp-fill.json")

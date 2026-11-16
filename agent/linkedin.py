@@ -8,7 +8,7 @@ How it works now (cheap and exact):
 Action buttons (Connect/Message/Follow/...) are blocked by an always-on page guard either way."""
 import json
 from common import db, log, run_claude, extract_json, PROFILE, budget_add
-import browse, browser
+import browse, browser, common
 
 RANK = """You are helping a final-year student get a referral or intro for this job. Below are REAL people seen just now on LinkedIn through the student's own
 logged-in account (degree = connection degree to the student). Use only these people and only facts shown; do not invent anyone or anything.
@@ -44,16 +44,21 @@ def scout_people(job, csv_hits=None):
     """Returns the referral-plan JSON with real targets, or raises browse.BrowseError (login wall etc.) so the caller can say exactly what went wrong."""
     c = db()
     company = job["company"]
-    people = browse.scan_company(company)
+    people = browse.scan_company(company, want=10)
     budget_add(c, "linkedin")
     if csv_hits:  # people from the user's own LinkedIn export who were not in search results
         seen = {p["url"] for p in people}
         people += [{"name": h["name"], "degree": "1st", "headline": h["position"], "url": h["url"], "mutual": "", "location": "", "current": f"{h['position']} at {company}"}
                    for h in csv_hits if h.get("url") and h["url"] not in seen][:4]
     if not people:
-        return {"degree_searched": "both", "strategy": "", "targets": [], "notes": f"No 1st- or 2nd-degree connections currently at {company} showed up in LinkedIn search."}
+        how = browse.LAST.get(company, "keywords")
+        names = " or ".join(browse.company_aliases(company))
+        note = (f"LinkedIn's current-company filter shows no 1st- or 2nd-degree connections at {names}." if how == "company filter" else
+                f"No 1st- or 2nd-degree connections at {names} were found by keyword search (LinkedIn's company page could not be matched, so "
+                "this is not certain; check the company's People tab in the agent browser).")
+        return {"degree_searched": "both", "strategy": "", "targets": [], "notes": note}
     text, _ = run_claude(RANK.format(summary=PROFILE["summary"], projects=" | ".join(PROFILE["projects"][:3]), company=company, title=job["title"],
-                                     location=job["location"], url=job["url"], people=_compact(people)), kind="rank", timeout=240, max_turns=1)
+                                     location=job["location"], url=job["url"], people=_compact(people)) + common.job_context(job["id"], "rank"), kind="rank", timeout=240, max_turns=1)
     r = extract_json(text)
     known = {p["url"].rstrip("/"): p for p in people}
     r["targets"] = [t for t in r.get("targets", []) if (t.get("profile_url") or "").rstrip("/") in known]  # never let the model add someone we did not see
@@ -62,7 +67,28 @@ def scout_people(job, csv_hits=None):
 
 
 def scout_people_mcp(job):
-    """Fallback: Claude drives the browser through Playwright MCP (expensive). Used only when the deterministic extractor cannot parse the page."""
+    """Fallback when the deterministic extractor cannot parse the page: a model reads the search results through JobAgent's own browser loop
+    (webagent: works on every provider, local included). Claude's own browser (Playwright MCP) is the last resort."""
+    import webagent
+    try:
+        co = {}
+        try:
+            co = browse.linkedin_company(browse.company_aliases(job["company"])[0])
+        except browse.BrowseError:
+            pass
+        start = ("https://www.linkedin.com/search/results/people/?currentCompany=%5B%22" + co["id"] + "%22%5D&network=%5B%22F%22%2C%22S%22%5D" if co.get("id")
+                 else "https://www.linkedin.com/search/results/people/?keywords=" + job["company"].split("(")[0].strip().replace(" ", "%20") + "&network=%5B%22F%22%2C%22S%22%5D")
+        r = webagent.run(f"Find people who CURRENTLY work at {job['company']} in the user's 1st- and 2nd-degree LinkedIn network, best for a referral to "
+                         f"'{job['title']}'. Read the search results (open the next page once if useful). Report only people shown on the pages, with "
+                         "their profile URL exactly as linked.", start, mode="read", kind="linkedin", max_steps=6,
+                         result_hint='{"degree_searched":"1st|2nd|both","strategy":"","targets":[{"name":"","degree":"","headline":"","profile_url":"","mutual":"","why_likely_to_respond":"","evidence":"","how_to_reach":""}],"notes":""}')
+        res = r["result"] if isinstance(r["result"], dict) else {}
+        seen = {u.split("?")[0].rstrip("/") for u in r.get("seen", [])}
+        res["targets"] = [t for t in res.get("targets", []) if (t.get("profile_url") or "").split("?")[0].rstrip("/") in seen]  # only people actually on the page
+        if res.get("targets") or "error" not in res:
+            return res
+    except Exception as e:
+        log(f"webagent LinkedIn fallback failed: {str(e)[:200]}")
     mp = browser.mcp_config("readonly", browser.READONLY_GUARD)
     text, _ = run_claude(MCP_PROMPT.format(company=job["company"], title=job["title"], kw=job["company"].replace(" ", "%20").split("(")[0]),
                          kind="linkedin", allowed_tools="mcp__fillbrowser", timeout=600, max_turns=30, mcp_config=mp, persist=True)

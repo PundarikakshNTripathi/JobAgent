@@ -20,6 +20,8 @@ TOOLS (call exactly one per step as JSON {{"thought": "one or two sentences of r
 - search_jobs {{"q": "text", "limit": 10}}      keyword search by company/title/location
 - get_job {{"id": ""}}                          full record of one job incl. triage verdict
 - get_plan {{"id": ""}}                         READ an existing referral plan (people, links, messages) and the packet's state
+- outreach_queue {{}}                           today's direct-outreach targets: fresh hiring posts and seed rounds, with found emails and the suggested angle
+- job_notes {{"id": ""}}                        the user's own instructions saved for one job
 ACTIONS (these CREATE or CHANGE things and take minutes; use them only when the goal asks to prepare, plan, draft or mark something;
 to check what already exists, use picks_list / get_job / get_plan instead):
 - packet {{"id": ""}}                           prepare the application packet (cover letter, answers, resume pick)
@@ -127,6 +129,13 @@ def tool(name, a):
         lines = [f"[{r['job_id']}] {r['company']} | {r['title'][:50]} | status {r['status']} | packet: {(r['packet_at'] or 'none')[:10]} | "
                  f"referral plan: {(r['plan_at'] or 'none')[:10]}" + (f" (OUTDATED: {r['stale'][:40]})" if r['stale'] else "") for r in rows[:40]]
         return head + "\n".join(lines) if rows else "no picks match"
+    if name == "outreach_queue":
+        import signals
+        return signals.text_list(signals.today())
+    if name == "job_notes":
+        import common
+        ns = common.job_notes(a.get("id", ""))
+        return "\n".join(f"- {n['ts'][:16]} {n['text']}" for n in ns) or "no notes for this job"
     if name == "get_plan":
         r = c.execute("SELECT r.dir, r.at, r.how, r.stale, j.company, j.title FROM referrals r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?", (a.get("id", ""),)).fetchone()
         if not r:
@@ -223,7 +232,7 @@ SPEC = {
     "recall": (["q"], {"q": str, "kinds": str}), "status": ([], {}), "top": ([], {"n": int}),
     "query_jobs": ([], {"verdict": str, "loc_class": str, "status": str, "has_referral": bool, "limit": int}),
     "search_jobs": (["q"], {"q": str, "limit": int}), "get_job": (["id"], {"id": str}), "packet": (["id"], {"id": str}),
-    "referral": (["id"], {"id": str}), "resume": (["id"], {"id": str}), "get_plan": (["id"], {"id": str}), "mark": (["id", "status"], {"id": str, "status": str, "reason": str}),
+    "referral": (["id"], {"id": str}), "resume": (["id"], {"id": str}), "get_plan": (["id"], {"id": str}), "outreach_queue": ([], {}), "job_notes": (["id"], {"id": str}), "mark": (["id", "status"], {"id": str, "status": str, "reason": str}),
     "remember": (["note"], {"note": str}), "web_search": (["q"], {"q": str}), "fetch": (["url"], {"url": str}), "inbox_list": ([], {}),
     "inbox_retry": ([], {"id": str}), "picks_list": ([], {"plan": str, "packet": str}), "inbox": (["text"], {"text": str, "context": str}), "needs_you_list": ([], {}),
     "linkedin_people": (["company"], {"company": str, "degree": str}), "linkedin_profile": (["url"], {"url": str}),

@@ -1,7 +1,7 @@
 """Referral planning. Uses YOUR LinkedIn connections export (data/Connections.csv) -- no logged-in scraping of LinkedIn.
 Per target job: rank connections at that company, have Claude research the best ones on the public web, draft the outreach."""
 import csv, json, os, re
-import outreach, packets
+import common, outreach, packets
 from common import db, log, now, run_claude, extract_json, DATA, ROOT, SETTINGS, PROFILE, budget_add, budget_used
 
 ALIASES = {"google deepmind": ["deepmind", "google deepmind", "google"], "meta": ["meta", "facebook", "meta ai"], "microsoft": ["microsoft", "microsoft research"],
@@ -157,6 +157,7 @@ def plan_referral(job_id, manual=False, require_linkedin=False, force=False):
             print("WARNING:", li_note)
     prompt = REF_PROMPT.format(summary=PROFILE["summary"], projects=" | ".join(PROFILE["projects"][:3]), site=PROFILE["website"], company=job["company"],
                                title=job["title"], location=job["location"], url=job["url"], reason=(tri["reason"] if tri else ""), contacts_block=cb, tasks=tasks)
+    prompt += common.job_context(job_id, "referral")
     text, _ = run_claude(prompt, kind="referral", allowed_tools="WebSearch,WebFetch", timeout=SETTINGS["packet_timeout_s"], max_turns=16)
     r = extract_json(text)
     if li_note:
@@ -226,7 +227,9 @@ def _write(c, job, tri, pk, r, nhits, how):
     if r.get("_note"):
         out += ["", "> NOTE: " + r["_note"]]
     out += ["", "## Strategy", r.get("strategy", ""), "", "## Timing", r.get("timing", ""), "", "## Do first"]
-    out += [f"- {x}" for x in r.get("before_you_message", [])]
+    tim = str(r.get("timing", "")).strip().lower()
+    # small models sometimes spill neighbouring keys into this list ("timing", then its value): keep real prep actions only
+    out += [f"- {x}" for x in r.get("before_you_message", []) if isinstance(x, str) and len(x.strip()) >= 15 and x.strip().lower() != tim]
     sec = lambda title, body: ["", f"**{title}**", body] if (body or "").strip() else []
     for i, t in enumerate(r.get("targets", []), 1):
         why = t.get("why_them") or t.get("why_likely_to_respond") or ""

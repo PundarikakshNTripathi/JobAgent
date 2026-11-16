@@ -4,7 +4,7 @@ provider, including small local models.
 
 Safety: everything here is READ-ONLY. LinkedIn pages get the always-on guard (no Connect/Message/Follow/... clicks), loads are paced like a human,
 pages per run are capped, and login walls / security checkpoints stop the run with a clear message. Form filling lives in fill.py (never submits)."""
-import json, os, random, re, threading, time, urllib.parse
+import contextlib, json, os, random, re, threading, time, urllib.parse
 import common
 from common import db, log, now, SETTINGS
 
@@ -59,6 +59,60 @@ def close():
         _state.update(pw=None, browser=None)
 
 
+def _xacquire(timeout=300):
+    """One JobAgent process drives the agent Chrome at a time. Two processes navigating the same Chrome at once made pages hang until the
+    45 s timeout (a Baseten and a Google scout ran together and the Google one failed). Re-entrant within a process."""
+    if _state.get("xdepth"):
+        _state["xdepth"] += 1
+        return
+    fh = open(os.path.join(common.DATA, "browser.lock"), "a+")
+    t0 = time.time()
+    while True:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if time.time() - t0 > timeout:
+                fh.close()
+                raise BrowseError("another JobAgent task has been using the browser for 5 minutes; try again shortly")
+            time.sleep(1.0)
+    _state["xfh"], _state["xdepth"] = fh, 1
+
+
+def _xrelease():
+    _state["xdepth"] = max(0, _state.get("xdepth", 0) - 1)
+    if _state["xdepth"] == 0 and _state.get("xfh"):
+        fh = _state.pop("xfh")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        fh.close()
+
+
+@contextlib.contextmanager
+def session():
+    """Exclusive use of the agent browser (this thread and this process)."""
+    with _lock:
+        _xacquire()
+        try:
+            yield
+        finally:
+            _xrelease()
+
+
 def _pace(lo=3.0, hi=6.0):
     time.sleep(random.uniform(lo, hi))
 
@@ -77,8 +131,13 @@ def _open(url, guard=False, wait=2.5):
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=45000)
     except Exception as e:
-        page.close()
-        raise BrowseError(f"could not open {url}: {str(e)[:160]}")
+        # one retry: LinkedIn's single-page app sometimes never fires DOMContentLoaded for a search; the first response is enough there
+        try:
+            page.goto(url, wait_until="commit", timeout=30000)
+            page.wait_for_selector("main", timeout=20000)
+        except Exception:
+            page.close()
+            raise BrowseError(f"could not open {url}: {str(e)[:160]}")
     _state["pages"] += 1
     time.sleep(wait)
     if WALL.search(page.url):
@@ -106,7 +165,7 @@ LINKS_JS = r"""(n) => [...document.querySelectorAll('a[href]')].map(a => ({t: (a
 
 def page_text(url, max_chars=12000):
     """Readable text of any page, through your logged-in browser (JS-rendered career pages, YC, LinkedIn...)."""
-    with _lock:
+    with session():
         page = _open(url)
         try:
             for _ in range(3):  # let SPAs render
@@ -121,7 +180,7 @@ def page_text(url, max_chars=12000):
 
 def open_page(url, max_chars=6000, links=40):
     """Title, text and the first links of a page (for the agent)."""
-    with _lock:
+    with session():
         page = _open(url)
         try:
             r = page.evaluate(TEXT_JS, max_chars)
@@ -145,7 +204,7 @@ def find_on_page(url, query, window=300):
 
 
 def screenshot(url, path):
-    with _lock:
+    with session():
         page = _open(url)
         try:
             page.screenshot(path=path, full_page=False)
@@ -189,21 +248,56 @@ def _parse_card(c):
     return {"name": name, "degree": deg, "headline": headline, "location": loc, "current": cur, "mutual": mutual, "url": c["url"]}
 
 
+def company_aliases(company):
+    """'Google / Google DeepMind' -> ['Google', 'Google DeepMind']; 'Hook (YC S21)' -> ['Hook']. Searching LinkedIn for the literal compound name
+    matched nobody (the Google Student Researcher plan said "no connections" while there are many)."""
+    base = re.sub(r"\([^)]*\)", " ", company or "")
+    parts = [x.strip(" -\u2013\u2014") for x in re.split(r"\s+/\s+|\s*\|\s*|\s*;\s*|\s+&\s+(?=[A-Z])", base)]
+    out = []
+    for x in parts:
+        x = re.sub(r"\s+", " ", x).strip()
+        if x and x.lower() not in [o.lower() for o in out]:
+            out.append(x)
+    return out or [(company or "").strip()]
+
+
+def _keys(company):
+    out = set()
+    for al in company_aliases(company):
+        base = re.sub(r"[^a-z0-9 ]", " ", al.lower())
+        base = re.sub(r"\s+", " ", base).strip()
+        out |= {base, re.sub(r"\s+", " ", re.sub(r"\b(ai|labs?|inc|technologies|research|india|corp|corporation|ltd|llc)\b", "", base)).strip()}
+    return {k for k in out if len(k) >= 2}
+
+
 def _company_match(person, company):
-    base = re.sub(r"\(.*?\)", "", company.lower())
-    base = re.sub(r"[^a-z0-9 ]", " ", base).strip()
-    keys = {base, re.sub(r"\b(ai|labs?|inc|technologies|research|india)\b", "", base).strip()}
-    hay = (person["headline"] + " | " + person["current"]).lower()
-    # current employer only, stated as an employer ("at Stripe", "@ Stripe"); "ex-Stripe", "former ...", or a keyword snippet like
-    # "built Stripe-based payments" do not count
-    return any(k and re.search(r"(?<!ex)(?<!former)(?<!previously)(?:\bat\b|@)\s*" + re.escape(k) + r"(?![\w-])", hay) for k in keys)
+    """Current employer only. The 'Current:' line LinkedIn shows (or the current-company search filter) counts directly; in a headline the
+    company must be stated as an employer ("at X", "@ X", "X |", "- X", ", X"). "ex-X", "former X" and "previously at X" do not count."""
+    keys = _keys(company)
+    cur = re.sub(r"\s+", " ", (person.get("current") or "").lower()).strip()
+    # LinkedIn's "Current:" line can be a keyword snippet ("implemented Stripe-based payments"): the company must be stated as the employer
+    if any(re.search(r"(?:^|\bat\b|@)\s*" + re.escape(k) + r"(?![\w-])", cur) for k in keys):
+        return True
+    hay = (person.get("headline") or "").lower()
+    for k in keys:
+        e = re.escape(k)
+        if re.search(r"(?<!ex)(?<!ex-)(?<!former)(?<!formerly)(?<!previously)(?:\bat\b|@)\s*" + e + r"(?![\w-])", hay):
+            return True
+        if re.search(r"(?:^|[|,\-\u2013\u2014\u00b7]\s*)" + e + r"\s*(?:$|[|,\u00b7(])", hay) and not re.search(r"\b(ex|former|formerly|previously)[\s-]*" + e, hay):
+            return True
+    return False
 
 
 def cached_people(company, days=7):
-    rows = db().execute("SELECT * FROM people WHERE lower(company)=lower(?) AND seen_at>=datetime('now', ?) ORDER BY degree, name",
-                        (company, f"-{days} day")).fetchall()
-    out = []
+    names = [company] + company_aliases(company)
+    q = ",".join("?" * len(names))
+    rows = db().execute(f"SELECT * FROM people WHERE lower(company) IN ({q}) AND seen_at>=datetime('now', ?) ORDER BY degree, name",
+                        [n.lower() for n in names] + [f"-{days} day"]).fetchall()
+    out, seen = [], set()
     for r in rows:
+        if r["url"] in seen:
+            continue
+        seen.add(r["url"])
         d = dict(r)
         head, _, cur = d["headline"].partition(" | Current: ")
         d.update(headline=head, current=cur)
@@ -222,26 +316,114 @@ def _save_people(company, people, source):
     c.commit()
 
 
+COMPANY_LINKS_JS = r"""() => [...document.querySelectorAll('main a[href*="/company/"]')].map(a => [a.href.split('?')[0], ((a.innerText || '').trim().split('\n')[0] || '').trim()]).filter(x => x[1])"""
+CANNED_JS = r"""() => [...document.querySelectorAll('a[href*="currentCompany"]')].map(a => a.href)"""
+
+
+def _li_company_table(c):
+    c.execute("CREATE TABLE IF NOT EXISTS li_company(k TEXT PRIMARY KEY, name TEXT, slug TEXT, id TEXT, at TEXT)")
+
+
+def linkedin_company(name):
+    """{'name', 'slug', 'id'} of a company on LinkedIn: the company search picks the page, and the page's own "people who work here" link
+    carries LinkedIn's company id. Cached for 60 days. The id lets people search filter by CURRENT company exactly, instead of guessing
+    from keywords and headlines."""
+    c = db()
+    _li_company_table(c)
+    k = common.company_key(name)
+    r = c.execute("SELECT * FROM li_company WHERE k=? AND at>=datetime('now','-60 day')", (k,)).fetchone()
+    if r and r["id"]:
+        return dict(r)
+    with session():
+        page = _open("https://www.linkedin.com/search/results/companies/?keywords=" + urllib.parse.quote(name), guard=True, wait=3)
+        try:
+            links = page.evaluate(COMPANY_LINKS_JS)
+        finally:
+            page.close()
+        cands = [(u, t) for u, t in links if re.search(r"/company/[^/]+/?$", u)]
+        if not cands:
+            return {}
+        want = name.lower().strip()
+        url, title = next(((u, t) for u, t in cands if t.lower().strip() == want), cands[0])
+        page = _open(url, guard=True, wait=3)
+        try:
+            hrefs = page.evaluate(CANNED_JS)
+        finally:
+            page.close()
+    ids = []
+    for h in hrefs:
+        m = re.search(r"currentCompany=%5B%22(\d+)%22|currentCompany=\[\"(\d+)\"", h)
+        if m:
+            ids.append((("network" in h), m.group(1) or m.group(2)))
+    cid = next((i for net, i in ids if not net), ids[0][1] if ids else "")
+    slug = url.rstrip("/").rsplit("/", 1)[-1]
+    c.execute("INSERT OR REPLACE INTO li_company(k,name,slug,id,at) VALUES(?,?,?,?,datetime('now'))", (k, title, slug, cid))
+    c.commit()
+    log(f"browse: linkedin company {name} -> {title} ({slug}, id {cid or 'unknown'})")
+    return {"k": k, "name": title, "slug": slug, "id": cid}
+
+
+def _search_people(url, pages=2):
+    cards = []
+    with session():
+        for n in range(1, pages + 1):
+            page = _open(url + (f"&page={n}" if n > 1 else ""), guard=True, wait=4)
+            try:
+                got = page.evaluate(PEOPLE_JS)
+            finally:
+                page.close()
+            cards += got
+            if len(got) < 10:
+                break
+            _pace(2, 4)
+    return cards
+
+
+LAST = {}  # company -> how the last search ran ("company filter" or "keywords"), so callers word "nobody" claims honestly
+
+
 def linkedin_people(company, degree="1st", role_words="", limit=12, use_cache=True):
-    """People at `company` among your 1st- or 2nd-degree network, from LinkedIn search (read-only). Cached for 7 days."""
+    """People who CURRENTLY work at `company` among your 1st- or 2nd-degree network (read-only, cached 7 days).
+    Compound names are split ('Google / Google DeepMind' searches both). Primary path: LinkedIn's current-company filter (exact); fallback:
+    keyword search plus an employer check on each result."""
     if use_cache and not role_words:
         hit = [p for p in cached_people(company) if p["degree"] == degree]
         if hit:
             return hit[:limit]
-    net = {"1st": "F", "2nd": "S"}[degree]
-    kw = (company + (" " + role_words if role_words else "")).strip()
-    url = "https://www.linkedin.com/search/results/people/?keywords=" + urllib.parse.quote(kw) + "&network=%5B%22" + net + "%22%5D&origin=FACETED_SEARCH"
-    with _lock:
-        page = _open(url, guard=True, wait=4)
+    net = {"1st": "F", "2nd": "S", "any": ""}[degree]  # "any": everyone at the company (founders of a new startup are rarely in your network)
+    per, modes = [], []
+    for al in company_aliases(company):
         try:
-            cards = page.evaluate(PEOPLE_JS)
-        finally:
-            page.close()
-    people = [p for p in (_parse_card(c) for c in cards) if p["name"] and _company_match(p, company)][:limit]
-    _save_people(company, people, f"linkedin-{degree}")
-    log(f"browse: linkedin {degree}-degree at {company}: {len(people)} people (of {len(cards)} results)")
-    _pace()
-    return [dict(p, company=company) for p in people]
+            co = linkedin_company(al)
+        except BrowseError as e:
+            log(f"browse: company lookup failed for {al}: {e}")
+            co = {}
+        if co.get("id"):
+            url = ("https://www.linkedin.com/search/results/people/?currentCompany=%5B%22" + co["id"] + "%22%5D" + ("&network=%5B%22" + net + "%22%5D" if net else "") +
+                   "&origin=FACETED_SEARCH" + ("&keywords=" + urllib.parse.quote(role_words) if role_words else ""))
+            people = [dict(p, current=p.get("current") or co.get("name") or al) for p in (_parse_card(c) for c in _search_people(url)) if p["name"]]
+            modes.append("company filter")
+        else:
+            kw = (al + (" " + role_words if role_words else "")).strip()
+            url = "https://www.linkedin.com/search/results/people/?keywords=" + urllib.parse.quote(kw) + ("&network=%5B%22" + net + "%22%5D" if net else "") + "&origin=FACETED_SEARCH"
+            people = [p for p in (_parse_card(c) for c in _search_people(url, pages=1)) if p["name"] and _company_match(p, al)]
+            modes.append("keywords")
+        if degree != "any":
+            people = [p for p in people if p["degree"] in ("", degree)] or people
+        for p in people:
+            p["degree"] = p["degree"] or ("" if degree == "any" else degree)
+        _save_people(al, people, f"linkedin-{degree}")
+        log(f"browse: linkedin {degree}-degree at {al}: {len(people)} people ({modes[-1]})")
+        per.append([dict(p, company=al) for p in people])
+        _pace()
+    LAST[company] = "company filter" if modes and all(m == "company filter" for m in modes) else "keywords"
+    out, seen = [], set()
+    for row in zip(*[x + [None] * (max(map(len, per)) - len(x)) for x in per]) if per else []:  # interleave: every alias is represented
+        for p in row:
+            if p and p["url"] not in seen:
+                seen.add(p["url"])
+                out.append(p)
+    return out[:limit]
 
 
 PROFILE_JS = r"""() => {
@@ -254,7 +436,7 @@ PROFILE_JS = r"""() => {
 
 def linkedin_profile(url):
     """Top card, About, Experience and recent activity of one profile (truncated, read-only). Stored with the person."""
-    with _lock:
+    with session():
         page = _open(url.split("?")[0], guard=True, wait=4)
         try:
             r = page.evaluate(PROFILE_JS)
@@ -303,28 +485,12 @@ Reply with JSON only, one of:
 Never log in, submit, apply, message or click buttons; only read and follow links. Pages left: {left}."""
 
 
-def browser_task(goal, start_url, max_pages=6):
-    """Multi-step read-only navigation driven by a cheap model call per page (compact page text + link list, not the DOM)."""
-    from llm import run
-    url, notes = start_url, []
-    for left in range(max_pages, 0, -1):
-        r = open_page(url, 3500, 60)
-        links = "\n".join(f"{i}: {l['t']} -> {l['h']}" for i, l in enumerate(r.get("links", [])))
-        text, _ = run(TASK_PROMPT.format(goal=goal, url=r["url"], title=r["title"], text=r["text"], links=links, notes="\n".join(notes) or "(none)", left=left - 1),
-                      kind="browse", timeout=180, max_turns=1)
-        try:
-            d = common.extract_json(text)
-        except ValueError:
-            break
-        if d.get("note"):
-            notes.append(f"- {r['url']}: {d['note'][:300]}")
-        if d.get("answer"):
-            return d["answer"] + ("\n\nSeen:\n" + "\n".join(notes[-6:]) if notes else "")
-        if "open" in d and str(d["open"]).isdigit() and int(d["open"]) < len(r.get("links", [])):
-            url = r["links"][int(d["open"])]["h"]
-        elif d.get("goto", "").startswith("http"):
-            url = d["goto"]
-        else:
-            break
-        _pace(1.5, 3)
-    return "Stopped before finding a definite answer. Notes:\n" + "\n".join(notes)
+def browser_task(goal, start_url, max_pages=8):
+    """Multi-step read-only browsing for the agent tool: the provider-agnostic browser loop (webagent) in read mode. Any model can drive it."""
+    import webagent
+    r = webagent.run(goal + "\nAnswer from what the pages show; include the page URLs you used.", start_url or "https://duckduckgo.com/", mode="read",
+                     kind="browse", max_steps=max_pages, result_hint='{"answer": "", "sources": ["url"]}')
+    res = r["result"]
+    if isinstance(res, dict) and res.get("answer"):
+        return str(res["answer"]) + ("\nSources: " + ", ".join(res.get("sources") or []) if res.get("sources") else "")
+    return "Stopped before finding a definite answer: " + (json.dumps(res)[:1500] if not isinstance(res, str) else res[:1500])

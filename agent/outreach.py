@@ -44,6 +44,8 @@ def draft(job, targets, fit=""):
     people = "\n".join(f"- {t.get('name')} | {t.get('role') or t.get('headline','')} | degree: {t.get('degree','cold')} | mutual: {t.get('mutual','')} | what they work on / evidence: {str(t.get('evidence') or t.get('why_them') or '')[:400]}" for t in targets)
     prompt = PROMPT.format(style=humanize.style_pack(), name=PROFILE.get("first_name") or PROFILE.get("name", "the student"), facts=facts(),
                            rules=" ".join(PROFILE.get("hard_rules", []))[:1200], company=job["company"], title=job["title"], location=job["location"], fit=fit[:400], people=people)
+    import common
+    prompt += common.job_context(job["id"], "outreach") if "id" in job.keys() else ""
     text, _ = run(prompt, kind="outreach", timeout=300, max_turns=2)
     try:
         items = extract_json(text)

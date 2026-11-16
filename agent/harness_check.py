@@ -103,8 +103,26 @@ def t_summary(p):
     return f"{len(s)} chars"
 
 
+def t_browser(p):
+    """One step of the provider-agnostic browser loop on a fixed page: the model must pick the right control by number, in valid JSON."""
+    import webagent
+    els = [{"i": 0, "tag": "a", "type": "", "label": "Home", "value": "", "href": "https://www.linkedin.com/company/acme/"},
+           {"i": 1, "tag": "a", "type": "", "label": "About", "value": "", "href": "https://www.linkedin.com/company/acme/about/"},
+           {"i": 2, "tag": "a", "type": "", "label": "People", "value": "", "href": "https://www.linkedin.com/company/acme/people/"},
+           {"i": 3, "tag": "button", "type": "", "label": "Follow", "value": ""}]
+    prompt = webagent.PROMPT.format(goal="Open the company's People tab to see who works there.", mode_rules=webagent.MODE_RULES["read"], left=5, hist="(nothing yet)",
+                                    title="Acme | LinkedIn", url="https://www.linkedin.com/company/acme/", text="Acme. 501-1K employees. 12 connections work here.",
+                                    els=webagent._fmt(els))
+    out, _ = llm.run(prompt, kind="browse", provider=p, timeout=600)
+    d = extract_json(out)
+    assert isinstance(d, dict), "not a JSON object"
+    act, i = str(d.get("action", "")).lower(), d.get("i")
+    assert (act == "click" and str(i) == "2") or (act == "goto" and "people" in str(d.get("url", ""))), f"wrong step: {json.dumps(d)[:160]}"
+    return f"{act} {i if act == 'click' else d.get('url')}"
+
+
 TESTS = [("triage", t_triage), ("chat", t_chat), ("agent step", t_agent), ("rank people", t_rank), ("outreach", t_outreach), ("inbox extraction", t_ingest),
-         ("chat summary", t_summary)]
+         ("chat summary", t_summary), ("browser step", t_browser)]
 
 
 def run_all(provider="local"):

@@ -36,7 +36,8 @@ Runs on **Windows, macOS and Linux**. Everything personal stays on your computer
 4. [The app (GUI)](#4-the-app-gui)
 5. [Ask the agent: plain words or slash commands](#5-ask-the-agent-plain-words-or-slash-commands)
 6. [The browser: LinkedIn, YC, job boards, any page](#6-the-browser-linkedin-yc-job-boards-any-page)
-7. [Referrals: real people, real messages](#7-referrals-real-people-real-messages)
+7. [Referrals: real people, real messages](#7-referrals-real-people-real-messages) (and [Rebuild with your instructions](#rebuild-with-your-instructions))
+   - [7b. Direct outreach: fresh hiring posts and seed rounds](#7b-direct-outreach-fresh-hiring-posts-and-seed-rounds)
 8. [The eligibility gate: full job descriptions](#8-the-eligibility-gate-full-job-descriptions)
 9. [Form filling (never submits)](#9-form-filling-never-submits)
 10. [Models: hosted, mixed, and local AI](#10-models-hosted-mixed-and-local-ai)
@@ -147,6 +148,7 @@ Everything runs on localhost only. The app has light and dark themes, works at p
 | **All jobs** | A job-board browser over every posting, with filters for keywords, role family, level, years of experience, location, visa, company tier, source and freshness. Every row opens the employer's posting. |
 | **My picks** | Everything *you* chose to work on: a step tracker (application, referral plan, resume advice, form filled), a **May not fit** badge when the job description rules you out, and **Who you know there** with profile links. |
 | **Ready to submit / Needs you** | Filled forms waiting for your Submit, and the exact fields that need you. |
+| **Outreach** | Today's 20 direct-outreach targets from fresh hiring posts and seed rounds: who, where their email was found, and a direction for what to write (section 7b). |
 | **Watchlist / Programs** | Prestige roles and fellowships: deadlines, eligibility, referral state. |
 | **Inbox** | Paste links or texts you found anywhere. Each is processed, stored, and retried if a model was busy. |
 | **Ask the agent** | Chat plus slash commands (section 5), in **separate conversations** (new, rename, delete), each with its own memory. Ctrl K opens the same commands from anywhere. |
@@ -226,11 +228,20 @@ JobAgent drives its **own Chrome window** (your logins live there) through Playw
 
 | Capability | How |
 |---|---|
-| LinkedIn people at a company | People search, 1st degree first, then 2nd degree with the mutual connections who can introduce you. Only people whose **current employer** is the company count ("ex-Stripe" doesn't). Cached for 7 days. |
+| LinkedIn people at a company | The company's own LinkedIn page is found once (cached 60 days) and people search is filtered by **current company** with LinkedIn's own filter, 1st degree first, then 2nd degree with the mutual connections who can introduce you. Names like "Google / Google DeepMind" are searched as both companies. Only if the company page can't be matched does it fall back to keywords plus an employer check ("ex-Stripe" doesn't count), and the plan then says the result is not certain. Cached for 7 days. |
 | A person's profile | Headline, About, Experience and recent activity, to find a specific hook. |
 | YC Work at a Startup | Your logged-in job lists with the visa field, and your profile. |
+| X (Twitter) | Hiring posts from curated accounts and live searches, read through your logged-in session (section 7b). |
 | Company career pages / ATS | Full job descriptions (JavaScript-rendered pages included) and application forms. |
-| Any page | `open_page`, `find_on_page`, and a read-only multi-step `browse_task` for the agent. |
+| Any page | `open_page`, `find_on_page`, and a multi-step `browse_task` for the agent. |
+
+**One browser, any model.** Multi-step browsing (odd application forms, editing your YC profile, the agent's `browse_task`, the LinkedIn fallback) runs in JobAgent's own browser loop: each step the model sees the page's text and a numbered list of its controls (links, buttons, fields with their values, dropdowns with their options) and answers with one JSON action. JobAgent carries it out with Playwright. Claude, Antigravity/Gemini, GPT/Codex, an API or the local model all drive the browser the same way, so a provider switch never turns the browser off. Claude's own browser tool is used only if the loop fails. Rules are enforced in code, not left to the model:
+- read-only tasks may only follow links, tabs and "next/more" buttons;
+- form filling may type, pick and upload but never presses Submit/Apply/Send;
+- profile editing may press Save but never Apply, Send, Message or Connect;
+- Connect, Message, Follow, Like, Comment and Repost are refused in every mode.
+
+Only one JobAgent process drives the browser at a time (a lock shared across processes), and a slow page gets one retry. Two runs navigating the same Chrome at once used to make pages hang.
 
 **Safety:**
 - On LinkedIn an always-on guard blocks Connect, Message, Follow, Like, Comment and Send.
@@ -258,6 +269,30 @@ JobAgent drives its **own Chrome window** (your logins live there) through Playw
 **No guessing.** People found on the public web are kept only if their page was actually read and shows their name and the company. There are no "UNVERIFIED" entries. If nobody reachable is found, the plan says so and tells you what to do: `/connections <company>`, or drop LinkedIn's connections export into `<workspace>/data/`.
 
 `/connections picks` (or `needs-you`, or a list of companies) checks your network at every company in one paced, read-only browser session, with no model cost.
+
+### Rebuild with your instructions
+
+Every job has a **Rebuild** button (the circular arrow on each row, in My picks, and in the job drawer). Tick what to redo (application, referral plan, resume advice) and optionally tell the agent what to change: *"Lead with the CUDA kernel work; this team does inference"*, *"Prefer people on the Gemini serving team"*. The note is saved with the job and attached to everything prepared for it from then on. The application and resume advice are revised from the previous version rather than started over; old referral plans are left out on purpose, so outdated claims can't carry over. Notes never override the truthfulness rules. From the CLI: `jobagent rebuild <id> packet,referral` (notes added in the app apply), or `/rebuild <job>` in the chat.
+
+---
+
+## 7b. Direct outreach: fresh hiring posts and seed rounds
+
+Mass applying is low-yield. A short, human email to the person who posted a role in the last 24 hours, or to the founders of a startup that just raised a seed round, gets read. The **Outreach** view (and `jobagent signals`) gives you up to **20 targets a day**:
+
+| Source | What is kept |
+|---|---|
+| X: curated accounts (`@WalnutJobs`, `@benln`, `@katieschwartz`, `@suraj_sharma14`; add your own in `signals.x_accounts`) | Each "@person is hiring <role> for @company" line becomes a target. |
+| X: live search for "we're hiring" posts | Posts **under 24 hours old and under 100 likes**, relevant to your tracks. |
+| LinkedIn posts from the last 24 hours | Only posts by people who own the hire (founders, CTOs, engineering leads, researchers). Recruiters, staffing agencies and job-aggregator pages are dropped. |
+| Seed rounds: TechCrunch, Crunchbase News, Inc42, EU-Startups, and founders' own "we raised our seed" posts on X | Rounds from the last 7 days. For each startup: the founders and one engineer, from LinkedIn's current-company filter and names checked against the article. |
+
+For each target you get:
+- **Who and how to reach them:** their profile, plus an email **only where one was actually seen** (in the post, their X bio, their LinkedIn contact info, or their website) with where it was found. When only the company domain is known, a *first@domain* address is shown as an unverified pattern guess.
+- **A direction, not an email:** a subject idea, the hook from their post or product, which **one** of your real results answers their need, the single ask, how to frame it in under 5 lines, and one thing to avoid. Figures that aren't in your profile are flagged. You write the email yourself: short, specific, a little rough.
+- **Tracking:** mark each one *I sent it* or *Skip*; the view shows how many of today's 20 you've sent. One target per company and per person a day (reposts of the same round or the same founder posting four times count once).
+
+It runs in every pipeline run (stage "Catching fresh hiring posts and seed rounds"), and the button **Find fresh signals now** runs it immediately. Run it at least twice a day to stay inside the 24-hour window. Settings: `signals.daily_target`, `max_age_hours`, `max_likes`, `seed_max_age_days`, `x_accounts`, `x_queries`, `linkedin_queries`, `news_feeds`. Nothing is ever sent, liked, followed or replied to.
 
 ---
 
@@ -316,7 +351,7 @@ Each falls back to the other. The setup wizard proposes a mix for whatever you h
 - worked examples of the right first call, the latest tool result kept in full (with a visible "N more characters" note, never a silent cut), repeated calls answered with the earlier result instead of an error, and a last-step reminder;
 - when a goal asks for a list and the model answers with a count, the items are attached verbatim from the tool output.
 
-`jobagent selftest [provider]` runs the real prompts of each task (triage, chat, agent step, ranking people, outreach, inbox extraction, chat summary) on one provider and checks that every output is valid and grounded. The local Qwen3.5-9B passes 7 of 7.
+`jobagent selftest [provider]` runs the real prompts of each task (triage, chat, agent step, ranking people, outreach, inbox extraction, chat summary, a browser step) on one provider and checks that every output is valid and grounded. Claude, Antigravity and the local Qwen3.5-9B each pass 8 of 8. An explicitly chosen provider never gets another provider's cached answer.
 
 ### Local AI (free, on your GPU)
 
@@ -456,6 +491,7 @@ These apply to every model, hosted or local.
 | `top [n]` · `status` · `watch` · `usage` | What to look at · counts · watchlist · model usage. |
 | `packet <id>` · `referral <id>` · `linkedin <id>` · `resume <id>` · `fill <id>` | Prepare · plan contacts · LinkedIn scouting · resume advice · fill (never submits). Add `--force` to override the eligibility gate. |
 | `connections [picks\|needs-you\|"A, B"]` | Who you know at each company (LinkedIn, read-only, no model cost). |
+| `signals [collect\|queue\|list]` · `rebuild <id> [packet,referral,resume\|all]` | Fresh hiring posts and seed rounds into today's outreach queue · redo one job's material with your notes for it. |
 | `audit` · `refresh [--no-plans]` | Re-check picks, packets and the watchlist against full job descriptions · re-check postings and flag/rebuild outdated referral plans. |
 | `selftest [provider]` | Run every task's real prompt on one provider and check the outputs (default: local). |
 | `mark <id> applied\|skip\|dismissed [reason]` | Record an outcome; reasons teach the agent. |
