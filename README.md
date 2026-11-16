@@ -612,8 +612,8 @@ Anything left empty in `form_defaults` is never guessed: it shows up under **Nee
 
 ## 17. Contributing
 
-New job sources, provider adapters, country guides, browser extractors and bug reports are all welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: the ground rules (never submit or contact anyone, never invent facts, provider-agnostic, no personal data in the repo), how to set up a demo workspace, and how to run the tests. Commits are signed off (`git commit -s`). Security issues: [SECURITY.md](SECURITY.md).
+New job sources, provider adapters, country guides, browser extractors and bug reports are all welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: the ground rules (never submit or contact anyone, never invent facts, provider-agnostic, no personal data in the repo), how to set up a demo workspace, and how to run the tests. Contributors agree to the [CLA](CLA.md) and sign off commits (`git commit -s`). Security issues: [SECURITY.md](SECURITY.md).
 
 ## 18. License
 
-[Apache License 2.0](LICENSE). You may use, modify and redistribute JobAgent, including commercially, with attribution; see [NOTICE](NOTICE). The JobAgent name and logo are not covered by the license: forks need their own.
+[GNU AGPL v3](LICENSE). You may use, study, change and share JobAgent, including commercially. If you distribute a modified version, or let others use one over a network (for example as a hosted service), you must make its complete source available under the same license. Commercial licenses without these obligations are available from the copyright holder; see [NOTICE](NOTICE). The JobAgent name and logo are not covered by the license: forks need their own.

@@ -53,15 +53,15 @@ python agent/run.py selftest <provider>          # if you changed a prompt or th
 
 Issues labelled `good first issue` are a gentle start.
 
-## Commit sign-off (DCO)
+## License and the contributor agreement
 
-Every commit must be signed off, certifying the [Developer Certificate of Origin](https://developercertificate.org/): that you wrote the change or have the right to submit it under the project's license.
+JobAgent is licensed under the **GNU AGPL v3** (see `LICENSE`): anyone may use and change it, and anyone who distributes a modified version, or runs one as a service for others, must publish its source under the same license.
 
-```bash
-git commit -s -m "Add Lever source for X"
-```
+Before your first pull request is merged, please agree to the [Contributor License Agreement](CLA.md) by adding this line to the PR description:
 
-This adds `Signed-off-by: Your Name <you@example.com>` to the commit. By contributing, you agree that your contribution is licensed under the Apache License 2.0 (see `LICENSE`).
+> I have read the JobAgent CLA (CLA.md) and agree to its terms for this and all my future contributions.
+
+You keep the copyright to your work. The CLA lets the maintainer also offer JobAgent under a commercial license (that is how the project can be sustained), while the open version always stays AGPL. Please also sign off your commits (`git commit -s`), which certifies the [Developer Certificate of Origin](https://developercertificate.org/).
 
 ## Reporting bugs
 

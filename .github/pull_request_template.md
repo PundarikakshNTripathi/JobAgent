@@ -11,3 +11,6 @@
 - [ ] No personal data (profiles, logs, screenshots of a real workspace) in the diff
 - [ ] README updated if users see a difference
 - [ ] Commits signed off (`git commit -s`)
+
+<!-- First contribution? Keep this line: -->
+I have read the JobAgent CLA (CLA.md) and agree to its terms for this and all my future contributions.

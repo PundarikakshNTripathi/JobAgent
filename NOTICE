@@ -1,7 +1,18 @@
 JobAgent
-Copyright 2026 Pundarikaksh N. Tripathi and the JobAgent contributors
+Copyright (C) 2026 Pundarikaksh N. Tripathi and the JobAgent contributors
 
-This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License as published by the Free Software Foundation, version 3
+(see LICENSE). It is distributed WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-The name "JobAgent" and the JobAgent logo are not licensed under the Apache License
-(section 6 of the License): forks and derived products must use their own name and logo.
+In short: you may use, study, change and share JobAgent, including commercially. If you
+distribute a modified version, or let people use a modified version over a network (for
+example as a hosted service), you must make its complete source code available to them under
+the same license.
+
+Commercial licenses without these obligations are available from the copyright holder
+(contact through GitHub: https://github.com/PundarikakshNTripathi).
+
+The name "JobAgent" and the JobAgent logo are not licensed under the AGPL: forks and derived
+products must use their own name and logo.
