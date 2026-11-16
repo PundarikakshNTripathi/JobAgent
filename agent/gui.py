@@ -246,6 +246,14 @@ def schedule_info(fresh=False):
     return _sched_cache["v"]
 
 
+def presets_info():
+    try:
+        import presets
+        return {"current": presets.current(), "list": presets.info()}
+    except Exception as e:
+        return {"current": "custom", "list": [], "error": str(e)[:200]}
+
+
 def spawn(cmd, arg=""):
     """Start a command as a hidden background process (shared with the chat commands). Jobs that produce something to read post a result message into the chat when they finish."""
     import chatcmd
@@ -356,7 +364,7 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._send(200, re.sub(r"feed health: .*", "feed health: (omitted)", txt), "text/plain")
             if path == "/api/settings":
                 return self._j({"settings": {k: v for k, v in common.SETTINGS.items() if k in SETTING_KEYS}, "providers": providers_info(), "kinds": list(common.SETTINGS["llm"]["routing"].keys()),
-                                "schedule": schedule_info(), "home": HOME})
+                                "schedule": schedule_info(), "home": HOME, "presets": presets_info()})
             if path == "/api/usage":
                 return self._j(usage_info())
             if path == "/api/inbox":
@@ -402,6 +410,13 @@ class H(http.server.BaseHTTPRequestHandler):
                 import signals
                 signals.mark(str(d.get("id", "")), str(d.get("status", "")), str(d.get("note", ""))[:500])
                 return self._j({"ok": True})
+            if path == "/api/preset":
+                import presets
+                try:
+                    missing = presets.apply(str(d.get("name", "")))
+                except ValueError as e:
+                    return self._j({"error": str(e)}, 400)
+                return self._j({"ok": True, "missing": missing})
             if path == "/api/rebuild":
                 jid, parts = str(d.get("id", "")).strip(), [x for x in (d.get("parts") or ["packet"]) if x in ("packet", "referral", "resume")]
                 if not jid or not parts:

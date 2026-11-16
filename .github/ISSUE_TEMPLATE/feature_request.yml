@@ -1,0 +1,22 @@
+name: Feature or new source
+description: A new job source, provider, country, or a feature idea
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve for a job seeker?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: For a new job source, include an example URL of the board or API.
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Ground rules
+      options:
+        - label: It never submits, sends or contacts anyone on the user's behalf, and never invents facts (see CONTRIBUTING.md).
+          required: true

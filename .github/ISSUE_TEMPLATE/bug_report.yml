@@ -1,0 +1,27 @@
+name: Bug report
+description: Something doesn't work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      placeholder: "I ran `jobagent connections picks` and ..."
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `jobagent doctor`
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant lines from <workspace>/logs/agent.log
+      description: Remove names, emails and profile links before pasting.
+      render: text
+  - type: input
+    id: os
+    attributes:
+      label: OS and provider(s)
+      placeholder: "Windows 11, local + agy"

@@ -16,6 +16,7 @@
             providers [test <name>]   list/test LLM providers      bench [n]   benchmark providers on your data
             app / shortcuts       desktop window / Start-menu entry
             rebuild <id> [packet,referral,resume|all]   redo one job's material with your notes for it
+            routing [list|use <preset>]   model presets: recommended, low-cost, hosted, local-only
             signals [collect|queue|list]   fresh hiring posts + seed rounds -> today's 20 direct-outreach targets
             gui [--no-open]       local web GUI                       yc-profile  rewrite your YC profile (truthful)
  SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-times HH:MM [HH:MM]   (default 09:00 18:00)
@@ -261,6 +262,13 @@ def main():
     elif cmd == "triage":
         import pipeline
         pipeline.triage()
+    elif cmd == "routing":
+        # routing [list] | routing use <recommended|low-cost|hosted|local-only>
+        import presets
+        if len(a) > 2 and a[1] == "use":
+            missing = presets.apply(a[2])
+            print(f"Routing set to '{a[2]}'." + (f" Not ready on this machine: {', '.join(missing)} (their tasks use the fallback chain)." if missing else ""))
+        print(presets.text())
     elif cmd in ("signals", "outreach"):
         # signals [collect|queue|list]: fresh hiring posts (X, LinkedIn) and seed rounds -> today's direct-outreach queue (you write every email)
         import signals

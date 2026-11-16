@@ -47,6 +47,8 @@ Runs on **Windows, macOS and Linux**. Everything personal stays on your computer
 14. [Privacy and safety](#14-privacy-and-safety)
 15. [Troubleshooting and FAQ](#15-troubleshooting-and-faq)
 16. [For developers](#16-for-developers)
+17. [Contributing](#17-contributing)
+18. [License](#18-license)
 
 ---
 
@@ -343,6 +345,17 @@ If a form can't be read, a model-driven fill takes over; it's slower and costs m
 
 Each falls back to the other. The setup wizard proposes a mix for whatever you have installed.
 
+**Presets.** Settings → *Which model does which job* → **Preset**, or `jobagent routing use <name>`:
+
+| Preset | What it does |
+|---|---|
+| `recommended` | Claude for writing, chat and the browser; Gemini (Antigravity) for referral research; the local model for bulk work (triage, extraction, ranking, plans). Fallbacks: Claude → Antigravity → local. |
+| `low-cost` | No Claude: Gemini (Antigravity) for writing, chat and the browser; the local model for bulk work. Fallbacks: Antigravity → local. |
+| `hosted` | No local model: Claude for most work, Antigravity for research. |
+| `local-only` | Everything on your GPU: free and private, weakest at long writing. |
+
+You can still change single tasks after picking a preset; Settings then shows *Custom*, and **Back to recommended** (or `jobagent routing use recommended`) restores the recommended mix.
+
 **The fallback chain is Claude → Antigravity → local model.** If Claude is unavailable or out of quota, Antigravity takes the task; if that is unavailable too, the local model does (when one is set up). Nothing waits for a specific provider: work keeps moving on whatever is available.
 
 **Any model, including a small local one, gets the same harness**, so the agent does not depend on a big model's instincts:
@@ -491,6 +504,7 @@ These apply to every model, hosted or local.
 | `top [n]` · `status` · `watch` · `usage` | What to look at · counts · watchlist · model usage. |
 | `packet <id>` · `referral <id>` · `linkedin <id>` · `resume <id>` · `fill <id>` | Prepare · plan contacts · LinkedIn scouting · resume advice · fill (never submits). Add `--force` to override the eligibility gate. |
 | `connections [picks\|needs-you\|"A, B"]` | Who you know at each company (LinkedIn, read-only, no model cost). |
+| `routing [list]` · `routing use <recommended\|low-cost\|hosted\|local-only>` | Show the model routing · switch to a preset. |
 | `signals [collect\|queue\|list]` · `rebuild <id> [packet,referral,resume\|all]` | Fresh hiring posts and seed rounds into today's outreach queue · redo one job's material with your notes for it. |
 | `audit` · `refresh [--no-plans]` | Re-check picks, packets and the watchlist against full job descriptions · re-check postings and flag/rebuild outdated referral plans. |
 | `selftest [provider]` | Run every task's real prompt on one provider and check the outputs (default: local). |
@@ -593,3 +607,13 @@ Anything left empty in `form_defaults` is never guessed: it shows up under **Nee
 - **Images:** `tools/screenshots.py` and `tools/record_gifs.py` (against the demo workspace) regenerate the README images; `tools/make_icons.py` renders the app icons from the logo.
 - **Images in this README:** come from the demo. Run `tools/screenshots.py` and `tools/record_gifs.py --url <gui url>`; these need Pillow, `python -m pip install pillow`.
 - **Publishing a copy:** the tree contains no personal data, but the git history of a personal fork may. Start a fresh history before making a copy public, and never commit a workspace.
+
+---
+
+## 17. Contributing
+
+New job sources, provider adapters, country guides, browser extractors and bug reports are all welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: the ground rules (never submit or contact anyone, never invent facts, provider-agnostic, no personal data in the repo), how to set up a demo workspace, and how to run the tests. Commits are signed off (`git commit -s`). Security issues: [SECURITY.md](SECURITY.md).
+
+## 18. License
+
+[Apache License 2.0](LICENSE). You may use, modify and redistribute JobAgent, including commercially, with attribution; see [NOTICE](NOTICE). The JobAgent name and logo are not covered by the license: forks need their own.

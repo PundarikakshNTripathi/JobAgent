@@ -1,0 +1,475 @@
+{
+  "_about": "Model routing presets. Apply one with `jobagent routing use <name>` or Settings -> Which model does which job -> Preset. A preset only changes which provider/model does each task and the fallback order; missing providers are skipped by the fallback chain.",
+  "recommended": {
+    "label": "Recommended: Claude for writing, chat and the browser; Gemini (Antigravity) for referral research; local model for bulk work",
+    "needs": [
+      "claude",
+      "agy",
+      "local"
+    ],
+    "routing": {
+      "triage": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "ingest": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "chat": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "packet": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
+      },
+      "outreach": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
+      },
+      "resume": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
+      },
+      "referral": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
+        "effort": ""
+      },
+      "scout": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "today": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "reflect": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "fill": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "linkedin": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "yc": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "default": {
+        "provider": "auto",
+        "model": "",
+        "effort": "medium"
+      },
+      "rank": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "browse": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "webplan": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "agent": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "summary": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "signals": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "angles": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      }
+    },
+    "fallbacks": [
+      "claude",
+      "agy",
+      "local"
+    ]
+  },
+  "low-cost": {
+    "label": "Low cost: Gemini (Antigravity) for writing, chat and the browser; local model for bulk work; no Claude",
+    "needs": [
+      "agy",
+      "local"
+    ],
+    "routing": {
+      "default": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      },
+      "triage": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "ingest": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "scout": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "today": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "reflect": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "rank": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "browse": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "webplan": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "summary": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "signals": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "packet": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
+        "effort": ""
+      },
+      "outreach": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
+        "effort": ""
+      },
+      "resume": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
+        "effort": ""
+      },
+      "referral": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
+        "effort": ""
+      },
+      "angles": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
+        "effort": ""
+      },
+      "chat": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      },
+      "agent": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      },
+      "fill": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      },
+      "linkedin": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      },
+      "yc": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      }
+    },
+    "fallbacks": [
+      "agy",
+      "local"
+    ]
+  },
+  "hosted": {
+    "label": "No local model: Claude for most work, Gemini (Antigravity) for research",
+    "needs": [
+      "claude",
+      "agy"
+    ],
+    "routing": {
+      "triage": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "ingest": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "chat": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "packet": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
+      },
+      "outreach": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
+      },
+      "resume": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
+      },
+      "referral": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
+        "effort": ""
+      },
+      "scout": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      },
+      "today": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "reflect": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "fill": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "linkedin": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "yc": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "default": {
+        "provider": "auto",
+        "model": "",
+        "effort": "medium"
+      },
+      "rank": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "browse": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "webplan": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "agent": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "summary": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "signals": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "angles": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
+      }
+    },
+    "fallbacks": [
+      "claude",
+      "agy"
+    ]
+  },
+  "local-only": {
+    "label": "Fully local: everything on your GPU (free, private; weakest at long writing)",
+    "needs": [
+      "local"
+    ],
+    "routing": {
+      "triage": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "ingest": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "chat": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "packet": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "outreach": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "resume": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "referral": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "scout": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "today": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "reflect": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "fill": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "linkedin": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "yc": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "default": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "rank": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "browse": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "webplan": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "agent": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "summary": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "signals": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "angles": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      }
+    },
+    "fallbacks": [
+      "local"
+    ]
+  }
+}
