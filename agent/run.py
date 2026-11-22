@@ -20,6 +20,8 @@
             signals [collect|queue|list]   fresh hiring posts + seed rounds -> today's 20 direct-outreach targets
             gui [--no-open]       local web GUI                       yc-profile  rewrite your YC profile (truthful)
  SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-times HH:MM [HH:MM]   (default 09:00 18:00)
+ GATE       regate [--no-browser]  re-check every match/pick/packet against its full posting (years, degree, seniority, visa)
+ PAUSE      pause [all|local|api|subscription] | resume [..]   stop all AI use (local model/GPU, API keys, subscriptions) until you resume
  MEMORY     reflect               update the agent's memory + scoring tweaks from your outcomes
 Your personal data lives in the workspace (see `doctor`), never in this repository."""
 import datetime as dt, json, os, re, subprocess, sys, time
@@ -49,6 +51,10 @@ def cycle():
     import pipeline, packets, referrals, fill, scout, dashboard, stakes, today, inbox, memory, jd
     if common.needs_setup():
         log("no profile yet: run `python agent/run.py init` (or open the GUI setup)")
+        return
+    import pause
+    if pause.state()["all"]:
+        log("cycle skipped: JobAgent is paused (" + pause.describe() + "); press Resume to run again")
         return
     if not acquire_lock():
         return
@@ -97,7 +103,7 @@ def cycle():
         left = SETTINGS.get("max_referrals_per_day", 12) - budget_used(c, "referrals")
         if left > 0:
             for r in c.execute("""SELECT j.id FROM jobs j JOIN triage t ON t.job_id=j.id
-                                  WHERE j.active=1 AND t.verdict IN ('APPLY','STRETCH') AND j.status NOT IN ('skipped','applied','ineligible','dismissed')
+                                  WHERE j.active=1 AND t.verdict IN ('APPLY','STRETCH') AND j.status NOT IN ('skipped','applied','ineligible','dismissed') AND COALESCE(j.gate,'')='' AND j.ghost IS NULL
                                     AND NOT EXISTS (SELECT 1 FROM referrals r WHERE r.job_id=j.id) AND NOT EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id AND p.referral_at IS NOT NULL)
                                   ORDER BY (j.status='watch') DESC, t.fit DESC LIMIT ?""", (min(left, SETTINGS.get("referrals_per_cycle", 6)),)).fetchall():
                 if time.time() > deadline:
@@ -248,12 +254,21 @@ def main():
             pass
     a = sys.argv[1:]
     force = "--force" in a  # you insist on a job the eligibility gate rejected
-    a = [x for x in a if x != "--force"]
+    refill = "--refill" in a  # refill a form whose tab was closed, with the values saved from the last fill
+    a = [x for x in a if x not in ("--force", "--refill")]
     cmd = a[0] if a else "status"
     if cmd in ("packet", "referral", "linkedin", "resume", "fill") and len(a) > 1:
         common.add_pick(a[1], {"linkedin": "referral"}.get(cmd, cmd))  # the user chose this job: list it under My picks
     if cmd == "cycle":
         cycle()
+    elif cmd == "regate":
+        import maintenance
+        print(json.dumps(maintenance.regate(use_browser="--no-browser" not in sys.argv), indent=1))
+    elif cmd in ("pause", "resume"):
+        import pause
+        scopes = tuple(a[1:]) or ("all",)
+        print(pause.pause(scopes) if cmd == "pause" else pause.resume(scopes))
+        print(pause.describe())
     elif cmd == "poll":
         import pipeline
         ids, first = pipeline.poll()
@@ -340,7 +355,7 @@ def main():
         print(resume.advise(a[1]))
     elif cmd == "fill":
         import fill
-        print(fill.fill_job(a[1], force=force))
+        print(fill.fill_job(a[1], force=force, refill=refill))
     elif cmd == "scout":
         import scout
         scout.run_scout(force=True)
@@ -413,8 +428,7 @@ def main():
     elif cmd == "mark":
         c = db()
         st = {"skip": "skipped"}.get(a[2], a[2])
-        c.execute("UPDATE jobs SET status=? WHERE id=?", (st, a[1]))
-        c.commit()
+        common.set_status(c, a[1], st, by="user")
         record_outcome(a[1], st, " ".join(a[3:]))
         print("ok")
     elif cmd == "notify-test":

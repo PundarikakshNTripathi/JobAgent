@@ -82,6 +82,9 @@ def available(name):
     p = registry().get(name)
     if not p:
         return False, "unknown provider"
+    import pause
+    if pause.is_paused(name):
+        return False, "paused (" + pause.LABEL[pause.billing_of(name)] + ")"
     cd = cooldown_until(name)
     if cd:
         return False, "quota reached; resumes " + cd[11:16]
@@ -119,6 +122,9 @@ def resolve_auto():
     for name in ("claude", "agy", "codex", "gemini", "openai", "anthropic", "openrouter", "gemini_api", "local", "ollama"):
         if available(name)[0]:
             return name
+    import pause
+    if pause.state()["any"]:
+        raise LLMError("JobAgent is paused (" + pause.describe() + "). Press Resume to continue.")
     raise LLMError("No LLM provider available. Install one (Claude Code, Antigravity, Codex, Gemini CLI) or set an API key; see Settings > Providers.")
 
 
@@ -413,6 +419,9 @@ def _web_augment(prompt, route, o, kind):
     notes = web.research_notes(plan.get("queries", [])[:6], plan.get("urls", [])[:4])
     if not notes.strip():  # search engine unreachable / nothing fetched: let a provider with native web tools do this call instead
         raise LLMError("web retrieval returned nothing (search engine unreachable); falling back to a provider with native web search")
+    import websafe
+    if "<untrusted" in notes and websafe.RULE not in prompt:
+        prompt = websafe.RULE + "\n\n" + prompt
     return prompt + ("\n\nNOTE: you have no browsing tools in this run. Use ONLY the research notes below (fetched by the pipeline). Anything not supported by them must be left out, not guessed.\n"
                      "=== RESEARCH NOTES ===\n" + (notes or "(nothing could be retrieved)"))
 
@@ -420,6 +429,8 @@ def _web_augment(prompt, route, o, kind):
 # ------------------------------------------------------------------ main entry
 def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra_args=None, cwd=None, max_turns=None, mcp_config=None, persist=False, provider=None, **_ignored):
     """Returns (text, raw). 'model' is only a legacy hint; routing decides. provider= forces one (used by bench / tests)."""
+    import websafe
+    prompt = websafe.guard_prompt(prompt)  # any web text in the prompt is data, never instructions
     need_browser = bool(mcp_config)
     need_web = any(t in allowed_tools for t in WEB_TOOLS)
     o = dict(allowed_tools=allowed_tools, timeout=timeout, extra_args=extra_args, cwd=cwd, max_turns=max_turns, mcp_config=mcp_config, persist=persist, kind=kind)
@@ -477,6 +488,8 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
         if name != primary["provider"] and not provider:
             log(f"llm {kind}: fell back to {name}")
         return text, {"provider": name, "usage": usage}
+    if errors and all(": paused (" in e for e in errors):
+        raise LLMError("JobAgent is paused (" + ", ".join(sorted({e.split(": paused (")[1].rstrip(")") for e in errors})) + "). Press Resume to continue.")
     if defer:
         raise LLMError("deferred to the next run (its provider is busy or out of quota; background quality work does not fall back): " + "; ".join(errors))
     raise LLMError("all providers failed for '%s': %s" % (kind, "; ".join(errors)))

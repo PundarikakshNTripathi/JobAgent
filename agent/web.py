@@ -16,6 +16,8 @@ def _get(url, timeout=25, data=None, headers=None):
 
 
 def to_text(h):
+    import websafe
+    h = websafe.strip_hidden_html(h)  # hidden text is a classic place for instructions aimed at AI readers
     for rx, rep in _STRIP:
         h = rx.sub(rep, h)
     h = re.sub(r"(?i)<br\s*/?>|</(p|div|li|h\d|tr)>", "\n", h)
@@ -43,7 +45,9 @@ def fetch_text(url, max_chars=None):
                 extra += f"\n[JobPosting] {node.get('title','')} | {node.get('hiringOrganization',{}).get('name','') if isinstance(node.get('hiringOrganization'), dict) else ''} | " \
                          f"{json.dumps(node.get('jobLocation'))[:300]} | {to_text(str(node.get('description','')))[:2500]}"
     text = (extra + "\n" + to_text(body)) if "html" in ctype or "<html" in body[:500].lower() else body
-    return html.unescape(title).strip(), text.strip()[:max_chars]
+    import websafe
+    text, _ = websafe.sanitize(text, url)
+    return websafe.clean(html.unescape(title)).strip()[:300], text.strip()[:max_chars]
 
 
 def search(query, n=5):
@@ -87,6 +91,7 @@ def research_notes(queries=(), urls=(), max_pages=None):
         seen.add(url)
         title, text = fetch_text(url)
         if text and not text.startswith("(fetch failed"):
-            blocks.append(f"PAGE {url}\nTITLE: {title}\n{text}")
+            import websafe
+            blocks.append(f"PAGE {url}\nTITLE: {title}\n" + websafe.wrap(url, text))
             pages += 1
     return "\n\n".join(blocks)[:60000]

@@ -1,6 +1,6 @@
 """poll -> score -> store -> alert -> LLM triage."""
 import json, re
-import feeds, scoring, memory
+import feeds, scoring, memory, common
 from common import (company_key as common_key, db, log, now, notify, meta_get, meta_set, run_claude, extract_json, SETTINGS, PROFILE,
                     budget_add, budget_used)
 
@@ -71,6 +71,56 @@ def backfill_posted():
     return n
 
 
+SRC_BY_PREFIX = {"speedyapply-ai": "speedyapply", "speedyapply-swe": "speedyapply", "simplify-intern": "simplify-intern", "simplify-newgrad": "simplify-newgrad",
+                 "getro": "vc-boards", "yc": "yc", "hnwh": "hn", "hnjob": "hn", "remoteok": "remoteok", "remotive": "remotive", "amazon": "Amazon",
+                 "google": "Google (careers site)", "atlassian": "Atlassian", "workable": "Hugging Face"}
+
+
+def src_key(row):
+    """The feed (health key) a stored job comes from: stored since round 5, derived from the id for older rows."""
+    if row["src"]:
+        return row["src"]
+    pre = row["id"].split(":")[0]
+    if pre in SRC_BY_PREFIX:
+        return SRC_BY_PREFIX[pre]
+    if pre == "eightfold":
+        return f"{row['company']} (careers site)"
+    return row["company"]  # greenhouse / ashby / lever / smartrecruiters / workday: one feed per company
+
+
+def gone_jobs(c, seen_ids, health, ts):
+    """Postings missing from a feed that answered are gone from that board. A feed that suddenly returns far fewer postings than last time
+    is treated as an outage, not as mass closure. Jobs you work on are never hidden: they get closed_at (shown as 'posting closed').
+    Jobs you added yourself (manual:) are not on any feed and are never touched here."""
+    import common
+    prev = json.loads(meta_get(c, "feed_counts") or "{}")
+    ok = set()
+    for k, v in health.items():
+        if isinstance(v, str):
+            continue
+        if v == 0 or (prev.get(k, 0) >= 20 and v < 0.3 * prev[k]):
+            log(f"feed {k}: {v} postings (was {prev.get(k, 0)}); not treating missing postings as closed this time")
+            continue
+        ok.add(k)
+    meta_set(c, "feed_counts", json.dumps({k: v for k, v in health.items() if not isinstance(v, str)} | {k: prev[k] for k in prev if isinstance(health.get(k), str)}))
+    picked = {r[0] for r in c.execute("SELECT job_id FROM picks UNION SELECT job_id FROM packets UNION SELECT job_id FROM referrals")}
+    hid = kept = 0
+    for r in c.execute("SELECT id, company, status, src, last_seen, closed_at FROM jobs WHERE active=1").fetchall():
+        if r["id"] in seen_ids or r["id"].startswith(("manual:", "prog:", "scout:", "sig:")) or (r["last_seen"] or "") >= ts:
+            continue
+        if src_key(r) not in ok:
+            continue
+        if r["status"] in common.WORKED_STATUS or r["id"] in picked:
+            if not r["closed_at"]:
+                c.execute("UPDATE jobs SET closed_at=? WHERE id=?", (ts, r["id"]))
+                kept += 1
+        else:
+            c.execute("UPDATE jobs SET active=0 WHERE id=?", (r["id"],))
+            hid += 1
+    if hid or kept:
+        log(f"poll: {hid} postings gone from their boards (hidden); {kept} you work on marked 'posting closed' and kept")
+
+
 def poll():
     """Fetch every source, upsert jobs, return list of ids that are new AND pass the heuristic bar."""
     c = db()
@@ -88,9 +138,10 @@ def poll():
         if not j["title"] or not j["url"] or j["id"] in seen_ids:
             continue
         k = key(j["company"], j["title"])
+        seen_ids.add(j["id"])  # seen on its board, even when another source's copy is the one we keep (else it would be marked gone)
         if first_ats.setdefault(k, j["ats"]) != j["ats"]:
+            c.execute("UPDATE jobs SET last_seen=?, src=COALESCE(src,?) WHERE id=?", (ts, j.get("_src"), j["id"]))
             continue
-        seen_ids.add(j["id"])
         s = scoring.score(j)
         if s["drop"]:
             continue
@@ -98,8 +149,9 @@ def poll():
         posted, psrc = (j.get("posted") or "")[:10], (j.get("_posted_src") or ("feed" if j.get("posted") else ""))
         row = c.execute("SELECT id, posted, posted_src FROM jobs WHERE id=?", (j["id"],)).fetchone()
         if row:
-            c.execute("UPDATE jobs SET last_seen=?, active=1, score=?, loc_class=?, family=?, early=?, yoe=?, visa=? WHERE id=?",
-                      (ts, s["score"], s["loc_class"], s["family"], s["early"], s["yoe"], s["visa"], j["id"]))
+            c.execute("""UPDATE jobs SET last_seen=?, active=CASE WHEN status IN ('closed','duplicate') THEN active ELSE 1 END, closed_at=NULL, src=?,
+                         score=?, loc_class=?, family=?, early=?, yoe=?, visa=? WHERE id=?""",
+                      (ts, j.get("_src"), s["score"], s["loc_class"], s["family"], s["early"], s["yoe"], s["visa"], j["id"]))
             # a real date beats an age-derived one, which beats 'first seen'; an age-derived date is not moved later by re-polls
             rank = {"feed": 3, "age": 2, "seen": 1, None: 0, "": 0}
             if posted and rank.get(psrc, 0) > rank.get(row["posted_src"], 0):
@@ -109,14 +161,10 @@ def poll():
                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       (j["id"], j["company"], j.get("_tier", "C"), j.get("_cat", ""), j["title"], j["location"], j["url"], j["ats"], posted or ts[:10],
                        ts, ts, s["score"], s["loc_class"], s["family"], s["early"], s["yoe"], j["desc"][:6000], 1 if first_run else 0, s["visa"]))
-            c.execute("UPDATE jobs SET posted_src=? WHERE id=?", (psrc if posted else "seen", j["id"]))
+            c.execute("UPDATE jobs SET posted_src=?, src=? WHERE id=?", (psrc if posted else "seen", j.get("_src"), j["id"]))
             if s["score"] >= SETTINGS["min_heuristic_score_for_llm"]:
                 new_ids.append(j["id"])
-    # mark disappeared jobs only for sources that answered (avoid mass-deactivating on an outage)
-    ok_companies = {k for k, v in health.items() if not isinstance(v, str)}
-    for r in c.execute("SELECT id, company, last_seen FROM jobs WHERE active=1").fetchall():
-        if r["id"] not in seen_ids and r["company"] in ok_companies and r["last_seen"] < ts:
-            c.execute("UPDATE jobs SET active=0 WHERE id=?", (r["id"],))
+    gone_jobs(c, seen_ids, health, ts)
     c.commit()
     if first_run:
         meta_set(c, "baseline_done", ts)
@@ -167,8 +215,9 @@ Achievements: {achievements}
 Resume variants available: {variants}
 {persona}
 
-Stance: the candidate needs an offer soon and is playing a numbers game on normal-stakes roles, so be generous: prefer APPLY over STRETCH when a realistic shot exists, and STRETCH over SKIP when only a soft bar blocks them.
-READ the requirements: if the posting requires 2 or more years of professional experience (look for 'N+ years', 'minimum N years', 'at least N years'), the verdict is SKIP unless it explicitly accepts equivalent project/research experience; always state the years required in yoe_gap.
+Stance: be strict and honest. APPLY only when the candidate meets the stated requirements today; a weak APPLY wastes the candidate's time and referrals.
+READ the requirements: if the posting requires 1 or more years of professional experience (a range counts by its lower bound: '1-3 years' = 1; look for 'N+ years', 'minimum N years', 'at least N years'), the verdict is SKIP unless it explicitly accepts internships/projects as that experience; '0-2 years', 'new grad' and internships are fine. Always state the years required in yoe_gap.
+Location and visa: a role outside the candidate's home country is APPLY only if the posting (or the company, well known for it) sponsors visas; if it is silent, STRETCH with flag 'visa'; if it needs an existing work permit or citizenship, SKIP.
 For each posting return a verdict:
  APPLY   = realistic shot or strong upside; the requirements are plausibly met or the YOE bar is soft.
  STRETCH = worth a referral-led attempt only (hard bar but not impossible).
@@ -274,7 +323,15 @@ def triage(max_jobs=None):
             c.execute("""INSERT OR REPLACE INTO triage(job_id,fit,verdict,resume,yoe_gap,reason,needs_referral,flags,at) VALUES(?,?,?,?,?,?,?,?,?)""",
                       (jid, float(o.get("fit", 0)), verdict, resume, o.get("yoe_gap", ""), o.get("reason", ""),
                        1 if o.get("needs_referral") else 0, json.dumps(o.get("flags", [])), now()))
-            c.execute("UPDATE jobs SET status=? WHERE id=?", ("triaged" if verdict != "SKIP" else "skipped", jid))
+            common.set_status(c, jid, "triaged" if verdict != "SKIP" else "skipped", commit=False)
+            c.commit()
+            try:  # the model's verdict cannot bypass the deterministic gate: visa-unclear roles never count as matches
+                import jd
+                if jd.quick_gate(jid) == "visa-blocked" and verdict != "SKIP":
+                    c.execute("UPDATE triage SET verdict='SKIP', reason=reason || ' [gate: needs an existing work permit]' WHERE job_id=?", (jid,))
+                    common.set_status(c, jid, "skipped", commit=False)
+            except Exception as e:
+                log(f"gate after triage failed for {jid}: {e}")
             done.append(jid)
         c.commit()
     import stakes

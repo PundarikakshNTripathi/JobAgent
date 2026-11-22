@@ -135,6 +135,9 @@ def start(model=None, ctx=None, wait=900):
     """Start llama-server (first start downloads the model, several minutes). Returns True when healthy."""
     if running():
         return True
+    import pause
+    if pause.state()["local"]:
+        raise RuntimeError("the local model is paused; press Resume (or run `run.py resume local`) first")
     b = server_bin()
     if not b:
         raise RuntimeError("llama.cpp is not installed: run `python agent/run.py local-setup`")
@@ -163,18 +166,33 @@ def start(model=None, ctx=None, wait=900):
     return False
 
 
-def stop():
+def stop(force=False):
+    """Stop the llama-server JobAgent started. force=True also stops JobAgent's own llama-server binary if it was started some other way."""
     pid = common.meta_get(common.db(), "local_ai_pid")
-    if not pid:
-        return "not started by JobAgent"
-    try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", pid, "/T", "/F"], capture_output=True)
-        else:
-            os.kill(int(pid), 15)
-    except Exception as e:
-        return f"could not stop: {e}"
-    return "stopped"
+    msg = "not started by JobAgent"
+    if pid:
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", pid, "/T", "/F"], capture_output=True)
+            else:
+                os.kill(int(pid), 15)
+            msg = "stopped"
+        except Exception as e:
+            msg = f"could not stop: {e}"
+        common.meta_set(common.db(), "local_ai_pid", "")
+    if force and running():
+        b = server_bin()
+        if b and os.name == "nt":
+            ps = ("Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq '%s' } | "
+                  "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }") % os.path.abspath(b).replace("'", "''")
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=30)
+        elif b:
+            subprocess.run(["pkill", "-f", os.path.abspath(b)], capture_output=True)
+        time.sleep(1)
+        msg = "stopped" if not running() else "still running (started outside JobAgent?)"
+    elif msg == "not started by JobAgent" and not running():
+        msg = "not running"
+    return msg
 
 
 # ------------------------------------------------------------------ quality gate

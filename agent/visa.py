@@ -1,6 +1,7 @@
 """Free visa-clarity enrichment: for promising jobs abroad whose sponsorship is not stated in the feed text, fetch the full posting page and run the
 sponsorship detector on it (HTTP only, no model tokens). Also rescore everything after the scoring rules change."""
 import re
+import common
 from common import db, log, SETTINGS
 import scoring, web
 
@@ -21,7 +22,8 @@ def enrich(limit=40):
             desc = ((r["desc"] or "")[:400] + " " + body)[:9000]
             s = scoring.score({"title": r["title"], "location": r["location"], "desc": desc, "ats": r["ats"], "_tier": r["tier"]})
             if s["drop"] and "yrs" in str(s["drop"]):
-                c.execute("UPDATE jobs SET status='dismissed', yoe=?, desc=? WHERE id=?", (s["yoe"], desc + f" [auto-dismissed: {s['drop']}]" + MARK, r["id"]))
+                c.execute("UPDATE jobs SET yoe=?, desc=? WHERE id=?", (s["yoe"], desc + f" [auto-dismissed: {s['drop']}]" + MARK, r["id"]))
+                common.set_status(c, r["id"], "dismissed", commit=False)
                 dismissed += 1
             else:
                 c.execute("UPDATE jobs SET desc=?, score=?, loc_class=?, family=?, early=?, yoe=?, visa=? WHERE id=?",

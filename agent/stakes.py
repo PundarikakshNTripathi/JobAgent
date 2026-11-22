@@ -1,6 +1,7 @@
 """High-stakes watchlist. Prestigious / low-odds-without-a-referral roles (frontier-lab fellowships, residencies, pre-docs, safety programs)
 are never auto-applied. They are tracked, a draft packet is prepared, and the daily 'Today' page nudges referral outreach and skill-building."""
 import re
+import common
 from common import db, now, SETTINGS, log
 
 HS = SETTINGS.get("high_stakes", {})
@@ -19,8 +20,7 @@ def is_high_stakes(job):
 def add_watch(job_id, reason, next_step="Get in touch with an employee first (see referral plan), then decide whether to apply", deadline="", note=""):
     c = db()
     c.execute("INSERT OR IGNORE INTO watch(job_id,added,reason,next_step,deadline,note) VALUES(?,?,?,?,?,?)", (job_id, now(), reason, next_step, deadline, note))
-    c.execute("UPDATE jobs SET status='watch' WHERE id=?", (job_id,))
-    c.commit()
+    common.set_status(c, job_id, "watch")
     log(f"watchlist: {job_id} ({reason})")
 
 

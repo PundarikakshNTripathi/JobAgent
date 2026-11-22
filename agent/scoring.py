@@ -58,17 +58,40 @@ def _n(s):
     return int(s) if s.isdigit() else _NUM.get(s.lower(), 0)
 
 
-def min_yoe(text):
-    """Smallest 'N years of experience' requirement mentioned in the posting (digits or words, ranges, 'minimum/at least'). None if none found."""
-    vals = []
+_RANGE = r"(?:\s*\+)?(?:\s*(?:-|to|–|—|or)\s*" + _NUMRX + r")?"
+_YOE_A = re.compile(_NUMRX + _RANGE + r"\s*\+?\s*(?:years?|yrs?)(?:'|’)?(?:\s+of)?[^.\n]{0,70}?(?:experience|exp\b|background|working|industry)", re.I)
+_YOE_B = re.compile(r"(?:experience|minimum|at least|min\.?|requires?)[^.\n]{0,50}?" + _NUMRX + _RANGE + r"\s*\+?\s*(?:years?|yrs?)", re.I)
+# experience a student can have: "1+ years of programming experience (including coursework, internships or projects)"
+_STUDENT_OK = re.compile(r"intern(ship)?s?\b|coursework|academic|school|university|college|personal projects|side projects|research projects|including projects|class(es)?\b|hobby", re.I)
+_REQ_CONTEXT = re.compile(r"requir|must|need|minimum|at least|qualif|you have|you bring|looking for|ideal(ly)? (candidate|you)|should have", re.I)
+
+
+def yoe_mentions(text, require_context=False):
+    """[(years, snippet)] for every stated experience requirement; a range counts as its lower bound ('1-3 years' = 1, '0-2 years' = 0).
+    Mentions a student can meet (internships, coursework, projects) are left out. require_context=True keeps only sentences that read as a
+    requirement (for blog posts and other prose without a requirements section)."""
+    out = []
     ym = re.search(r"min experience: (\d{1,2})", text, re.I)
     if ym:
-        vals.append(int(ym.group(1)))
-    for m in re.finditer(_NUMRX + r"\s*\+?\s*(?:(?:-|to|–)\s*" + _NUMRX + r"\s*)?(?:\+\s*)?(?:years?|yrs?)(?:'|’)?(?:\s+of)?[^.\n]{0,70}?(?:experience|exp\b|background|working|industry)", text, re.I):
-        vals.append(_n(m.group(1)))
-    for m in re.finditer(r"(?:experience|minimum|at least|min\.?|requires?)[^.\n]{0,50}?" + _NUMRX + r"\s*\+?\s*(?:years?|yrs?)", text, re.I):
-        vals.append(_n(m.group(1)))
-    vals = [v for v in vals if 0 < v <= 20]
+        out.append((int(ym.group(1)), ym.group(0)))
+    for rx in (_YOE_A, _YOE_B):
+        for m in rx.finditer(text):
+            v = _n(m.group(1))
+            if v > 20:
+                continue
+            around = text[max(0, m.start() - 120):m.end() + 90]
+            sent = re.split(r"(?<=[.!?\n])\s", text[max(0, m.start() - 160):m.end() + 120])
+            if v <= 2 and _STUDENT_OK.search(text[m.start():m.end() + 90]):
+                continue
+            if require_context and not _REQ_CONTEXT.search(around):
+                continue
+            out.append((v, re.sub(r"\s+", " ", text[max(0, m.start() - 40):m.end() + 20]).strip()))
+    return out
+
+
+def min_yoe(text, require_context=False):
+    """Years of experience the posting requires: the smallest lower bound among its stated requirements (0 for '0-2 years'). None if none stated."""
+    vals = [v for v, _ in yoe_mentions(text or "", require_context)]
     return min(vals) if vals else None
 
 

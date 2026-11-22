@@ -10,7 +10,7 @@ STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui_static", 
 # command -> needs an argument?
 ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "today": False, "dashboard": False, "usage": False, "yc-profile": False, "inbox": False,
            "reflect": False, "bench": False, "inbox-retry": False, "enable-schedule": False, "disable-schedule": False, "packet": True, "referral": True, "resume": True, "fill": True,
-           "linkedin": True, "mark": True, "agent": True, "retry": False, "rebuild": True, "signals": False}
+           "linkedin": True, "mark": True, "agent": True, "retry": False, "rebuild": True, "signals": False, "regate": False, "sponsor": True}
 SETTING_KEYS = {"poll_every_minutes", "min_heuristic_score_for_llm", "instant_alert_score", "max_triage_calls_per_day", "triage_batch_size", "max_triage_per_cycle", "triage_desc_chars",
                 "max_packets_per_day", "packet_min_fit", "max_referrals_per_day", "max_linkedin_per_day", "linkedin_browse", "max_fills_per_day", "auto_fill", "fill_window_local_hours",
                 "scout_every_days", "guard_minutes", "notify", "web", "humanize", "memory", "agent_mode", "llm", "include_new_grad_list", "recent_days_github_lists"}
@@ -44,16 +44,30 @@ def packet_files(job_id):
             "checked": (jb["checked"] if jb else "") or "", "closed": bool(jb and (not jb["active"] or jb["status"] == "ineligible"))}
 
 
+_tabcheck = {"t": 0}
+
+
 def state():
     c = db()
-    rows = c.execute("""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.posted,j.posted_src,j.checked,j.score,j.loc_class,j.visa,j.yoe,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,
-                               p.dir,w.note watch_note, (SELECT 1 FROM referrals r WHERE r.job_id=j.id) has_ref
+    import time as _tt
+    if _tt.time() - _tabcheck["t"] > 60:  # are forms waiting for Submit still open in the agent browser?
+        _tabcheck["t"] = _tt.time()
+        try:
+            import fill
+            fill.check_filled_tabs()
+        except Exception:
+            pass
+    worked = ",".join("'%s'" % x for x in common.WORKED_STATUS)
+    rows = c.execute(f"""SELECT j.id,j.company,j.tier,j.title,j.location,j.url,j.ats,j.first_seen,j.posted,j.posted_src,j.checked,j.score,j.loc_class,j.visa,j.yoe,j.status,t.verdict,t.fit,t.reason,t.yoe_gap,t.resume,
+                               p.dir,w.note watch_note, (SELECT 1 FROM referrals r WHERE r.job_id=j.id) has_ref, j.closed_at, j.active, j.ghost, j.gate, j.last_seen
                         FROM jobs j LEFT JOIN triage t ON t.job_id=j.id LEFT JOIN packets p ON p.job_id=j.id LEFT JOIN watch w ON w.job_id=j.id
-                        WHERE j.active=1 AND j.status NOT IN ('skipped','dismissed','ineligible') AND (j.status!='new' OR j.score>=65)
+                        WHERE ((j.active=1 AND j.status NOT IN ('skipped','dismissed','ineligible','duplicate','closed') AND (j.status!='new' OR j.score>=65)
+                                AND (j.id LIKE 'manual:%' OR j.last_seen IS NULL OR j.last_seen>=datetime('now','-14 days','localtime')))
+                               OR j.status IN ({worked}))
                         ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 1500""").fetchall()
     progs = c.execute("SELECT name,org,kind,window,eligibility,url FROM programs ORDER BY added DESC").fetchall()
     import chatcmd, time as _t
-    running = [k for k, p in list(chatcmd.RUNNING.items()) if p.poll() is None] + (["chat"] if CHAT_BUSY["on"] else [])
+    running = [t["key"] for t in chatcmd.tasks_json(40) if t["status"] in ("running", "starting")] + (["chat"] if CHAT_BUSY["on"] else [])
     lock = os.path.join(DATA, "cycle.lock")
     if "cycle" not in running and os.path.exists(lock) and _t.time() - os.path.getmtime(lock) < 100 * 60:
         running.append("cycle")  # a scheduled run is in progress
@@ -61,7 +75,15 @@ def state():
     return {"jobs": [dict(r) for r in rows], "programs": [dict(r) for r in progs], "last_poll": meta_get(c, "last_poll"), "setup_needed": common.needs_setup(),
             "active": c.execute("SELECT COUNT(*) FROM jobs WHERE active=1").fetchone()[0], "running": running, "day": dt.date.today().isoformat(), "plan": jread("today.json", None),
             "budget": {k: budget_used(c, k) for k in ("triage_calls", "packets", "referrals", "fills", "scout", "linkedin")},
-            "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME, "cooldowns": cooldowns(), "stage": (meta_get(c, "cycle_stage") or "|").split("|", 1)[1], "schedule": schedule_info()}
+            "inbox_pending": c.execute("SELECT COUNT(*) FROM inbox WHERE status IN ('new','processing')").fetchone()[0], "name": common.PROFILE.get("first_name", ""), "home": HOME, "cooldowns": cooldowns(), "stage": (meta_get(c, "cycle_stage") or "|").split("|", 1)[1], "schedule": schedule_info(),
+            "paused": pause_info(), "queued": [t["key"] for t in chatcmd.tasks_json(40) if t["status"] == "queued"]}
+
+
+def pause_info():
+    import pause
+    st = pause.state()
+    st["text"] = pause.describe()
+    return st
 
 
 def _csv(q, k):
@@ -155,7 +177,7 @@ def picks_info():
     c = db()
     out = []
     for r in c.execute("""SELECT p.job_id, p.ts, p.actions, j.company, j.title, j.location, j.url, j.score, j.tier, j.status, j.visa, j.yoe, j.loc_class, t.verdict, t.fit,
-                                 pk.dir pdir, pk.filled_at, pk.referral_at, rf.dir rdir, rf.stale rstale, j.posted, j.posted_src
+                                 pk.dir pdir, pk.filled_at, pk.referral_at, rf.dir rdir, rf.stale rstale, j.posted, j.posted_src, j.closed_at, j.active
                           FROM picks p JOIN jobs j ON j.id=p.job_id LEFT JOIN triage t ON t.job_id=p.job_id LEFT JOIN packets pk ON pk.job_id=p.job_id LEFT JOIN referrals rf ON rf.job_id=p.job_id
                           ORDER BY p.ts DESC LIMIT 200""").fetchall():
         d = r["pdir"] or r["rdir"]
@@ -172,7 +194,9 @@ def picks_info():
             pass
         import browse
         ppl = [{"name": x["name"], "degree": x["degree"], "url": x["url"], "headline": x["headline"][:90]} for x in browse.cached_people(r["company"], days=30)[:4]]
-        out.append({"problems": probs, "people": ppl, "id": r["job_id"], "ts": r["ts"], "company": r["company"], "title": r["title"], "location": r["location"], "url": r["url"], "score": r["score"], "tier": r["tier"],
+        import chatcmd
+        task = chatcmd.last_task(r["job_id"])
+        out.append({"task": task, "closed_at": r["closed_at"], "active": r["active"], "problems": probs, "people": ppl, "id": r["job_id"], "ts": r["ts"], "company": r["company"], "title": r["title"], "location": r["location"], "url": r["url"], "score": r["score"], "tier": r["tier"],
                     "status": r["status"], "visa": r["visa"], "yoe": r["yoe"], "loc_class": r["loc_class"], "verdict": r["verdict"], "fit": r["fit"], "wanted": want, "plan_stale": r["rstale"], "posted": r["posted"], "posted_src": r["posted_src"], "has": has, "ready": done})
     return out
 
@@ -208,10 +232,12 @@ def activity_info():
     """What is happening right now and what just happened (item 8): running jobs with their live stage, plus the latest log lines."""
     import chatcmd, time as _t
     c = db()
-    running = []
-    for k, p in list(chatcmd.RUNNING.items()):
-        if p.poll() is None:
-            running.append({"name": k, "since": ""})
+    running, recent = [], []
+    for t in chatcmd.tasks_json(30):
+        if t["status"] in ("running", "starting", "queued"):
+            running.append({"name": t["key"], "since": (t["started"] or "")[11:16], "id": t["id"], "status": t["status"]})
+        elif len(recent) < 8:
+            recent.append({"name": t["key"], "status": t["status"], "error": t["error"] or "", "ended": (t["ended"] or "")[11:16], "id": t["id"], "job_id": t["job_id"]})
     lock = os.path.join(DATA, "cycle.lock")
     stage = (meta_get(c, "cycle_stage") or "|").split("|", 1)
     if os.path.exists(lock) and _t.time() - os.path.getmtime(lock) < 100 * 60 and not any(r["name"] == "cycle" for r in running):
@@ -233,7 +259,7 @@ def activity_info():
                     lines.append({"ts": m.group(1), "text": m.group(2)[:240]})
     except OSError:
         pass
-    return {"running": running, "log": lines[::-1][:30]}
+    return {"running": running, "recent": recent, "log": lines[::-1][:30]}
 
 
 _sched_cache = {"t": 0, "v": None}
@@ -258,7 +284,9 @@ def spawn(cmd, arg=""):
     """Start a command as a hidden background process (shared with the chat commands). Jobs that produce something to read post a result message into the chat when they finish."""
     import chatcmd
     msg = chatcmd.launch(cmd, arg, chat=cmd in chatcmd.JOB_CMDS + chatcmd.PLAIN + ("agent", "inbox-retry", "retry"))
-    return {"error": "already running"} if msg.startswith("already running") else {"started": msg.replace("started: ", "")}
+    if msg.startswith("already running"):
+        return {"error": "already running"}
+    return {"queued": msg.split(": ", 1)[1]} if msg.startswith("queued") else {"started": msg.replace("started: ", "")}
 
 
 def chat_thread(text, thread=1):
@@ -301,6 +329,9 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._send(200, page(), "text/html")
             if path == "/api/state":
                 return self._j(state())
+            if path == "/api/tasks":
+                import chatcmd
+                return self._j({"tasks": chatcmd.tasks_json(60)})
             if path == "/logo":
                 import logos
                 res = logos.logo_for((q.get("c") or [""])[0], (q.get("u") or [""])[0])
@@ -352,7 +383,7 @@ class H(http.server.BaseHTTPRequestHandler):
                 conf = signals.cfg()
                 c = signals._table()
                 pool = c.execute("SELECT kind, COUNT(*) n FROM signals WHERE status='new' AND relevance>=55 GROUP BY kind").fetchall()
-                return self._j({"items": rows, "target": conf["daily_target"], "sent": sum(1 for r in rows if r["status"] == "sent"),
+                return self._j({"items": rows, "target": conf["daily_target"], "sent": sum(1 for r in rows if r["status"] == "sent" and not r["earlier"]),
                                 "pool": {r["kind"]: r["n"] for r in pool}, "last": (db().execute("SELECT MAX(found) m FROM signals").fetchone() or {"m": ""})["m"] or ""})
             if path == "/api/notes":
                 return self._j({"notes": common.job_notes((q.get("id") or [""])[0])})
@@ -406,6 +437,22 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._j({"error": "bad json"}, 400)
         path = urllib.parse.urlparse(self.path).path
         try:
+            if path == "/api/pause":
+                import pause, chatcmd
+                scopes = [x for x in (d.get("scopes") or ["all"]) if x in ("all",) + pause.SCOPES] or ["all"]
+                if d.get("resume"):
+                    msg = pause.resume(tuple(scopes))
+                else:
+                    msg = pause.pause(tuple(scopes), str(d.get("reason", ""))[:200])
+                    if d.get("stop_tasks"):
+                        msg += "; " + chatcmd.abort_all()
+                return self._j({"ok": True, "message": msg, "paused": pause_info()})
+            if path == "/api/tasks/abort":
+                import chatcmd
+                ref = str(d.get("id") or d.get("job_id") or "").strip()
+                if not ref:
+                    return self._j({"error": "needs a task id or job id"}, 400)
+                return self._j({"ok": True, "message": chatcmd.abort_all() if ref == "all" else chatcmd.abort(ref)})
             if path == "/api/signals":
                 import signals
                 signals.mark(str(d.get("id", "")), str(d.get("status", "")), str(d.get("note", ""))[:500])
@@ -508,6 +555,13 @@ class H(http.server.BaseHTTPRequestHandler):
 
 def serve(open_browser=True):
     port = common.SETTINGS.get("gui_port", 8777)
+    try:
+        import chatcmd
+        n = chatcmd.reconcile()  # tasks cut off by a restart are marked 'interrupted' (not 'in progress' forever); queued ones start
+        if n:
+            print(f"{n} task(s) were interrupted by a restart; see Activity")
+    except Exception as e:
+        print("could not reconcile tasks:", e)
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), H)
     url = f"http://127.0.0.1:{port}"
     print("JobAgent GUI at", url, "| workspace:", HOME, "(Ctrl+C to stop)")

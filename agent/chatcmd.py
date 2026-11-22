@@ -14,6 +14,10 @@ RUNNING, THREADS, _lock = {}, [], threading.Lock()
 COMMANDS = [
     ("help", "/help [command]", "Show this list, or details for one command.", "Basics"),
     ("status", "/status", "Pipeline counts, today's budgets, which providers are cooling down.", "Basics"),
+    ("pause", "/pause [all|local|api|subscription] [--stop]", "Stop all AI use (local model + GPU, API keys, subscriptions) until you resume; scheduled runs stay off too. --stop also aborts running tasks.", "Basics"),
+    ("resume-ai", "/resume-ai [all|local|api|subscription]", "Undo /pause: models and scheduled runs work again.", "Basics"),
+    ("tasks", "/tasks", "What is running, queued, and how recent tasks ended (with the reason when one failed).", "Basics"),
+    ("abort", "/abort <task id | job id | all>", "Stop a running or queued task (kills its whole process tree). Nothing is ever submitted.", "Basics"),
     ("usage", "/usage", "Model calls today per provider and kind, plus quota cooldowns.", "Basics"),
     ("top", "/top [n]", "Best open matches right now, with ids and links.", "Find"),
     ("jobs", "/jobs <words>", "Search the job board by company/title words, e.g. /jobs datadog applied science.", "Find"),
@@ -27,12 +31,13 @@ COMMANDS = [
     ("resume", "/resume <id or words>", "Resume tailoring advice for that job (truthful, nothing invented).", "Prepare"),
     ("signals", "/signals", "Find fresh hiring posts (X, LinkedIn, under 24 h) and new seed rounds, and fill today's outreach queue (Outreach view).", "Run"),
     ("rebuild", "/rebuild <id or words>", "Redo the application, referral plan and resume advice for that job, using any notes you left for it (Details -> Rebuild).", "Prepare"),
-    ("fill", "/fill <id or words>", "Fill the application form in the agent browser. Never submits; you press Submit.", "Prepare"),
+    ("fill", "/fill <id or words> [--refill]", "Fill the application form in the agent browser. Never submits; you press Submit. --refill replays the last fill's values (no model call) after the browser was closed.", "Prepare"),
     ("mark", "/mark <id or words> applied|skip|dismissed [reason]", "Record an outcome; reasons teach the agent.", "Track"),
     ("add", "/add <link or text> [-- your context]", "Put an opportunity you found into the inbox and process it.", "Track"),
     ("retry", "/retry", "Retry inbox items that failed or are waiting on quota.", "Track"),
     ("inbox", "/inbox", "Show the inbox queue and each item's status.", "Track"),
     ("remember", "/remember <fact>", "Save a fact or preference to the agent's memory.", "Track"),
+    ("regate", "/regate", "Re-check every match, pick and packet against its full posting with the current rules (years by lower bound, degree, seniority, visa).", "Run"),
     ("scout", "/scout", "Scout programs, residencies and high-stakes openings now.", "Run"),
     ("today", "/today", "Build today's plan.", "Run"),
     ("poll", "/poll", "Poll all sources for new postings (no model tokens).", "Run"),
@@ -43,7 +48,7 @@ COMMANDS = [
 ]
 CMD = {c[0]: c for c in COMMANDS}
 JOB_CMDS = ("packet", "referral", "linkedin", "resume", "fill", "rebuild")
-PLAIN = ("scout", "today", "poll", "cycle", "yc-profile", "reflect", "signals")
+PLAIN = ("scout", "today", "poll", "cycle", "yc-profile", "reflect", "signals", "regate")
 # what natural-language chat may start by itself; these never change a job's status and never submit anything
 NL_AUTO = JOB_CMDS[:4] + PLAIN[:3] + ("yc-profile", "retry", "remember", "ingest", "connections", "signals")
 NL_NEEDS_WORDS = {"fill": r"\bfill|auto-?fill", "mark": r"\b(mark|applied|skip|dismiss|ignore|reject)", "agent": r"\bagent|work on|figure out|research|find out|do this|take care"}
@@ -104,29 +109,187 @@ def _fmt_job(r):
 
 
 # ------------------------------------------------------------------ launching background work
+# Every background task is a row in `tasks` (survives GUI restarts): queued -> running -> done | failed | aborted | interrupted | timed-out.
+# Up to tasks.max_parallel run at once; the rest wait in the queue. Each has an overall time limit and can be aborted (whole process tree).
+TASK_LIMIT_MIN = {"cycle": 120, "signals": 60, "agent": 45, "connections": 45, "inbox": 60, "retry": 60}
+_JOBS_ARG = JOB_CMDS + ("mark",)
+
+
+def _argv(cmd, arg):
+    return {"retry": ["inbox", "retry", arg or "all"], "mark": ["mark"] + arg.split()}.get(cmd, [cmd] + (arg.split() if cmd in JOB_CMDS else ([arg] if arg else [])))
+
+
+def _max_parallel():
+    return max(1, int(common.SETTINGS.get("tasks", {}).get("max_parallel", 3)))
+
+
+def _limit_min(cmd):
+    t = common.SETTINGS.get("tasks", {})
+    return float(t.get("timeout_min", {}).get(cmd) or TASK_LIMIT_MIN.get(cmd) or t.get("default_timeout_min", 40))
+
+
 def launch(cmd, arg="", chat=True):
-    """Start `run.py <cmd> <arg>` as a hidden background process. When `chat`, post a message into the chat when it finishes. Returns a status line."""
+    """Queue `run.py <cmd> <arg>` as a hidden background task (starts at once when a slot is free). When `chat`, post a message into
+    the chat when it finishes. Returns a status line."""
     if cmd == "inbox-retry":
         cmd, arg = "retry", arg
-    argv = {"retry": ["inbox", "retry", arg or "all"], "mark": ["mark"] + arg.split()}.get(cmd, [cmd] + (arg.split() if cmd in JOB_CMDS else ([arg] if arg else [])))
     key = f"{cmd} {arg[:40]}".strip()
+    c = db()
     with _lock:
         p = RUNNING.get(key)
-        if p and p.poll() is None:
+        if (p and p.poll() is None) or c.execute("SELECT 1 FROM tasks WHERE key=? AND status IN ('queued','starting','running')", (key,)).fetchone():
             return f"already running: {key}"
-        logp = os.path.join(RUNS_DIR, f"{int(time.time())}-{re.sub(r'[^a-z0-9]+', '-', key.lower())[:40]}.log")
-        logf = open(logp, "w", encoding="utf-8")
-        p = subprocess.Popen([sys.executable, "-u", RUN_PY] + argv, stdout=logf, stderr=subprocess.STDOUT, cwd=CORE)
-        RUNNING[key] = p
-    t = threading.Thread(target=_watch, args=(key, cmd, arg, p, logp, logf, chat, _CUR["thread"]), daemon=True)
-    t.start()
-    THREADS.append(t)
-    return f"started: {key}"
+        jid = arg.split()[0] if (arg and cmd in _JOBS_ARG) else None
+        tid = c.execute("INSERT INTO tasks(key,cmd,arg,job_id,status,started,thread,rc) VALUES(?,?,?,?,?,?,?,?)",
+                        (key, cmd, arg, jid, "queued", now(), _CUR["thread"] if chat else 0, None)).lastrowid
+        c.commit()
+    started = _start_queued()
+    return f"started: {key}" if tid in started else f"queued: {key} (waiting for a free slot; {_max_parallel()} tasks run at once)"
+
+
+def _start_queued():
+    """Start queued tasks while slots are free. Returns the ids started."""
+    started = []
+    with _lock:
+        c = db()
+        busy = sum(1 for r in c.execute("SELECT pid FROM tasks WHERE status='running'").fetchall() if pid_alive(r["pid"]))
+        for t in c.execute("SELECT * FROM tasks WHERE status='queued' ORDER BY id").fetchall():
+            if busy >= _max_parallel():
+                break
+            if c.execute("UPDATE tasks SET status='starting' WHERE id=? AND status='queued'", (t["id"],)).rowcount != 1:
+                c.commit()
+                continue  # another JobAgent process took it
+            c.commit()
+            logp = os.path.join(RUNS_DIR, f"{int(time.time())}-{re.sub(r'[^a-z0-9]+', '-', t['key'].lower())[:40]}.log")
+            logf = open(logp, "w", encoding="utf-8")
+            kw = {"creationflags": 0x00000200} if os.name == "nt" else {"start_new_session": True}  # own process group: abort kills the whole tree
+            p = subprocess.Popen([sys.executable, "-u", RUN_PY] + _argv(t["cmd"], t["arg"] or ""), stdout=logf, stderr=subprocess.STDOUT, cwd=CORE, **kw)
+            RUNNING[t["key"]] = p
+            c.execute("UPDATE tasks SET status='running', pid=?, started=?, log=? WHERE id=?", (p.pid, now(), logp, t["id"]))
+            c.commit()
+            th = threading.Thread(target=_watch, args=(t["id"], t["key"], t["cmd"], t["arg"] or "", p, logp, logf, bool(t["thread"]), t["thread"] or 1), daemon=True)
+            th.start()
+            THREADS.append(th)
+            started.append(t["id"])
+            busy += 1
+    return started
 
 
 def wait_all():
-    for t in list(THREADS):
-        t.join()
+    """CLI use: block until every task this process started (and the queued ones they started in turn) has ended."""
+    while any(t.is_alive() for t in THREADS):
+        for t in list(THREADS):
+            t.join()
+
+
+def _kill_tree(pid):
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30)
+        else:
+            import signal
+            os.killpg(os.getpgid(int(pid)), signal.SIGTERM)
+    except Exception:
+        pass
+
+
+def pid_alive(pid):
+    if not pid:
+        return False
+    try:
+        if os.name == "nt":
+            import ctypes
+            h = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h:
+                return False
+            code = ctypes.c_ulong()
+            ctypes.windll.kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+            ctypes.windll.kernel32.CloseHandle(h)
+            return code.value == 259  # STILL_ACTIVE
+        os.kill(int(pid), 0)
+        return True
+    except Exception:
+        return False
+
+
+def _cleanup_after(cmd):
+    """What a killed task can leave behind: the cycle lock and inbox items marked 'processing'."""
+    c = db()
+    if cmd == "cycle":
+        try:
+            import run as _r
+            lock = _r.LOCK
+        except Exception:
+            lock = os.path.join(common.DATA, "cycle.lock")
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+    if cmd in ("cycle", "inbox", "retry", "agent"):
+        c.execute("UPDATE inbox SET status='error', result=? WHERE status='processing'", (json.dumps({"error": "stopped before it finished", "retry": "press Retry"}),))
+        c.commit()
+
+
+def abort(ref):
+    """Abort a queued or running task by id, key, or job id. Returns a message."""
+    c = db()
+    rows = c.execute("SELECT * FROM tasks WHERE status IN ('queued','starting','running') AND (CAST(id AS TEXT)=? OR key=? OR job_id=?)", (str(ref), str(ref), str(ref))).fetchall()
+    if not rows:
+        return f"nothing running matches {ref}"
+    out = []
+    for t in rows:
+        c.execute("UPDATE tasks SET status='aborted', ended=?, error='aborted by you' WHERE id=?", (now(), t["id"]))
+        c.commit()
+        if t["status"] == "running":
+            _kill_tree(t["pid"])
+            _cleanup_after(t["cmd"])
+        out.append(t["key"])
+    return "aborted: " + ", ".join(out)
+
+
+def abort_all():
+    c = db()
+    ids = [r["id"] for r in c.execute("SELECT id FROM tasks WHERE status IN ('queued','starting','running')").fetchall()]
+    if not ids:
+        return "no tasks were running"
+    return "; ".join(abort(i) for i in ids)
+
+
+def reconcile():
+    """At GUI start: tasks whose process is gone (GUI or computer restarted) become 'interrupted'; stale locks and stuck inbox rows are cleared;
+    queued tasks start."""
+    c = db()
+    n = 0
+    for t in c.execute("SELECT * FROM tasks WHERE status IN ('running','starting')").fetchall():
+        if not pid_alive(t["pid"]):
+            c.execute("UPDATE tasks SET status='interrupted', ended=?, error='stopped when JobAgent or the computer restarted' WHERE id=?", (now(), t["id"]))
+            n += 1
+    c.commit()
+    lock = os.path.join(common.DATA, "cycle.lock")
+    try:
+        pid = int(open(lock).read().strip() or 0)
+        if not pid_alive(pid):
+            os.remove(lock)
+    except (OSError, ValueError):
+        pass
+    stuck = c.execute("SELECT COUNT(*) FROM inbox WHERE status='processing'").fetchone()[0]
+    if stuck and not any(pid_alive(t["pid"]) for t in c.execute("SELECT pid FROM tasks WHERE status='running'").fetchall()):
+        c.execute("UPDATE inbox SET status='error', result=? WHERE status='processing'", (json.dumps({"error": "interrupted by a restart", "retry": "press Retry"}),))
+        c.commit()
+    _start_queued()
+    return n
+
+
+def tasks_json(limit=40):
+    c = db()
+    rows = [dict(r) for r in c.execute("SELECT id,key,cmd,arg,job_id,status,started,ended,rc,error FROM tasks ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
+    return rows
+
+
+def last_task(job_id):
+    """Latest task for a job (any prep kind), for the picks view: running / failed with reason / interrupted."""
+    r = db().execute("SELECT id,cmd,status,error,started,ended FROM tasks WHERE job_id=? ORDER BY id DESC LIMIT 1", (job_id,)).fetchone()
+    return dict(r) if r else None
 
 
 def _tail(path, n=12, maxc=1400):
@@ -137,10 +300,43 @@ def _tail(path, n=12, maxc=1400):
     return "\n".join(lines[-n:])[-maxc:]
 
 
-def _watch(key, cmd, arg, p, logp, logf, chat, thread=1):
-    rc = p.wait()
+def _watch(tid, key, cmd, arg, p, logp, logf, chat, thread=1):
+    limit = _limit_min(cmd) * 60
+    timed_out = False
+    try:
+        rc = p.wait(timeout=limit)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _kill_tree(p.pid)
+        _cleanup_after(cmd)
+        try:
+            rc = p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            rc = -9
     logf.close()
     out = _tail(logp, 400, 20000)
+    c = db()
+    st = c.execute("SELECT status FROM tasks WHERE id=?", (tid,)).fetchone()
+    if st and st["status"] == "aborted":
+        status, err = "aborted", "aborted by you"
+    elif timed_out:
+        status, err = "timed-out", f"stopped after {int(limit // 60)} minutes (time limit for {cmd})"
+    elif rc == 0:
+        status, err = "done", ""
+    else:
+        gate = re.search(r"GateError: (.*)", out)
+        status, err = "failed", (gate.group(1)[:300] if gate else (_tail_text(out, 1) or f"exit {rc}")[:300])
+    c.execute("UPDATE tasks SET status=?, ended=?, rc=?, error=? WHERE id=?", (status, now(), rc, err, tid))
+    c.commit()
+    if status == "aborted":
+        with _lock:
+            RUNNING.pop(key, None)
+        _start_queued()
+        if chat:
+            say("agent", f"Stopped {key}: aborted by you. Nothing was submitted.", thread)
+        return
+    if timed_out:
+        out += f"\n{err}"
     try:
         with open(os.path.join(LOGS, "gui_runs.log"), "a", encoding="utf-8") as g:  # keep the single run log the GUI/Doctor read
             g.write(f"\n[{now()}] {key} (exit {rc})\n{out[-4000:]}\n")
@@ -148,6 +344,7 @@ def _watch(key, cmd, arg, p, logp, logf, chat, thread=1):
         pass
     with _lock:
         RUNNING.pop(key, None)
+    _start_queued()
     if not chat:
         return
     try:
@@ -275,7 +472,7 @@ def run_slash(text, thread=1):
     if not m:
         return "Type /help for the commands."
     cmd, rest = m.group(1).lower(), m.group(2).strip()
-    cmd = {"referrals": "referral", "yc": "yc-profile", "ycprofile": "yc-profile", "search": "jobs", "find": "jobs", "list": "top", "commands": "help", "?": "help", "retry-inbox": "retry"}.get(cmd, cmd)
+    cmd = {"referrals": "referral", "yc": "yc-profile", "ycprofile": "yc-profile", "search": "jobs", "find": "jobs", "list": "top", "commands": "help", "?": "help", "retry-inbox": "retry", "unpause": "resume-ai"}.get(cmd, cmd)
     if cmd not in CMD:
         near = [n for n in CMD if n.startswith(cmd[:2])]
         return f"Unknown command /{cmd}." + (f" Did you mean {', '.join('/' + n for n in near)}?" if near else "") + " /help lists them all."
@@ -290,6 +487,25 @@ def execute(cmd, rest="", source="slash"):
         return cmd_status()
     if cmd == "usage":
         return cmd_usage()
+    if cmd == "tasks":
+        rows = tasks_json(15)
+        if not rows:
+            return "No tasks yet."
+        return "\n".join(f"#{r['id']} [{r['status']}] {r['key']}" + (f" - {r['error'][:140]}" if r['error'] else "") for r in rows)
+    if cmd == "abort":
+        if not rest:
+            return "Usage: /abort <task id | job id | all>  (see /tasks)"
+        return abort_all() if rest.strip() == "all" else abort(rest.strip())
+    if cmd in ("pause", "resume-ai", "unpause"):
+        import pause
+        words = rest.split()
+        scopes = tuple(w for w in words if not w.startswith("--")) or ("all",)
+        if cmd == "pause":
+            msg = pause.pause(scopes)
+            if "--stop" in words:
+                msg += "\n" + abort_all()
+            return msg
+        return pause.resume(scopes)
     if cmd == "top":
         return cmd_top(int(rest) if rest.isdigit() else 10)
     if cmd == "jobs":
@@ -317,7 +533,10 @@ def execute(cmd, rest="", source="slash"):
         if not rest:
             return "Usage: /remember <fact or preference>"
         import memory
-        memory.add_memory(rest[:500])
+        try:
+            memory.add_memory(rest[:500])
+        except ValueError as e:
+            return str(e)
         return "Saved to memory."
     if cmd in ("add", "ingest"):
         if not rest:
@@ -341,12 +560,12 @@ def execute(cmd, rest="", source="slash"):
         if not job:
             return msg
         st = {"skip": "skipped", "skipped": "skipped", "applied": "applied", "dismiss": "dismissed", "dismissed": "dismissed"}[words[idx].lower()]
-        c = db()
-        c.execute("UPDATE jobs SET status=? WHERE id=?", (st, job["id"]))
-        c.commit()
+        common.set_status(db(), job["id"], st, by="user")
         common.record_outcome(job["id"], st, " ".join(words[idx + 1:]))
         return f"Marked {_fmt_job(job)} as {st}."
     if cmd in JOB_CMDS:
+        refill = "--refill" in rest
+        rest = rest.replace("--refill", "").strip()
         force = bool(re.search(r"(^|\s)(--)?force$", rest.strip()))
         job, msg = resolve(re.sub(r"(^|\s)(--)?force$", "", rest.strip()).split(" --")[0])
         if not job:
@@ -354,7 +573,7 @@ def execute(cmd, rest="", source="slash"):
         common.add_pick(job["id"], {"linkedin": "referral"}.get(cmd, cmd))
         notes = {"linkedin": " I open your logged-in agent Chrome read-only (no Connect/Message/Follow clicks), look at 1st then 2nd degree people, and report names, profile links and how to approach each.  This takes a few minutes.",
                  "referral": " Uses LinkedIn when allowed, else public web; I will say which.", "fill": " It only fills the form and stops; you press Submit."}.get(cmd, "")
-        return f"{cmd} for {_fmt_job(job)}.{notes}\n" + launch(cmd, job["id"] + (" --force" if force else ""))
+        return f"{cmd} for {_fmt_job(job)}.{notes}\n" + launch(cmd, job["id"] + (" --force" if force else "") + (" --refill" if refill and cmd == "fill" else ""))
     return "Unknown command. /help lists them."
 
 
@@ -366,6 +585,8 @@ def execute_nl_actions(user_text, actions, thread=1):
     done, props = [], []
     for kind, arg in actions:
         k = {"retry-inbox": "retry"}.get(kind, kind)
+        if k in ("ingest", "add") and " -- " not in arg:
+            arg = f"{arg} -- {user_text[:1500]}"  # your own words travel with the item (they say whether to prepare it)
         need = NL_NEEDS_WORDS.get(k)
         if k in NL_AUTO or (need and re.search(need, user_text, re.I)):
             try:

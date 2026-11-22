@@ -211,6 +211,11 @@ CREATE INDEX IF NOT EXISTS people_company ON people(company);
 CREATE TABLE IF NOT EXISTS llm_cache(k TEXT PRIMARY KEY, kind TEXT, text TEXT, at REAL);
 CREATE TABLE IF NOT EXISTS company_meta(k TEXT PRIMARY KEY, company TEXT, domain TEXT, logo_url TEXT, source TEXT, at TEXT);
 CREATE TABLE IF NOT EXISTS job_notes(id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT, ts TEXT, text TEXT);
+CREATE TABLE IF NOT EXISTS tasks(id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT, cmd TEXT, arg TEXT, job_id TEXT, pid INTEGER, status TEXT, started TEXT, ended TEXT, rc INTEGER, error TEXT, log TEXT, thread INTEGER);
+CREATE INDEX IF NOT EXISTS tasks_job ON tasks(job_id);
+CREATE TABLE IF NOT EXISTS dossiers(k TEXT PRIMARY KEY, kind TEXT, name TEXT, facts TEXT, pages TEXT, flags TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, kind TEXT, name TEXT, org TEXT, tier TEXT, url TEXT, deadline TEXT, starts TEXT, prize TEXT, fit REAL, strategy TEXT, source TEXT, notes TEXT, added TEXT, checked TEXT, status TEXT DEFAULT 'open');
+CREATE TABLE IF NOT EXISTS misses(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, job_id TEXT, domain TEXT, company TEXT, note TEXT);
 CREATE TABLE IF NOT EXISTS threads(id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, created TEXT, updated TEXT, summary TEXT DEFAULT '', summarized_upto INTEGER DEFAULT 0);
 """
 
@@ -222,12 +227,27 @@ def db():
     c.execute("PRAGMA busy_timeout=90000")
     c.executescript(SCHEMA)
     for tbl, col, typ in (("llm_log", "provider", "TEXT"), ("llm_log", "secs", "REAL"), ("jobs", "jd_full", "INTEGER DEFAULT 0"), ("jobs", "req", "TEXT"),
-                           ("jobs", "posted_src", "TEXT"), ("jobs", "checked", "TEXT"), ("chat", "thread", "INTEGER DEFAULT 1"), ("referrals", "stale", "TEXT")):
+                           ("jobs", "posted_src", "TEXT"), ("jobs", "checked", "TEXT"), ("chat", "thread", "INTEGER DEFAULT 1"), ("referrals", "stale", "TEXT"),
+                           ("jobs", "closed_at", "TEXT"), ("jobs", "src", "TEXT"), ("jobs", "info_url", "TEXT"), ("jobs", "apply_url", "TEXT"), ("jobs", "ghost", "TEXT"),
+                           ("jobs", "gate", "TEXT"), ("packets", "fill_values", "TEXT"), ("outcomes", "channel", "TEXT"),
+                           ("signals", "checked", "TEXT"), ("signals", "draft", "TEXT"), ("signals", "channel", "TEXT"), ("signals", "dossier", "TEXT"),
+                           ("programs", "deadline", "TEXT"), ("programs", "strategy", "TEXT"), ("programs", "track", "TEXT")):
         try:  # forward-compatible migration of older workspaces
             c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}")
         except sqlite3.OperationalError:
             pass
+    if not _MIGRATED:
+        _MIGRATED.append(1)
+        try:  # round 5: jobs you work on that an older poll hid get a 'posting closed' date instead of vanishing
+            c.execute("UPDATE jobs SET closed_at=COALESCE(closed_at,last_seen) WHERE active=0 AND status IN (%s)" % ",".join("'%s'" % s for s in WORKED_STATUS))
+            c.execute("UPDATE jobs SET active=0 WHERE status IN ('duplicate','closed') AND active=1")
+            c.commit()
+        except sqlite3.OperationalError:
+            pass
     return c
+
+
+_MIGRATED = []
 
 
 def budget_used(c, kind):
@@ -250,11 +270,59 @@ def meta_set(c, k, v):
     c.commit()
 
 
-def record_outcome(job_id, event, note=""):
-    """Feedback loop: applied / skipped (with reason) / replied ... feeds memory and learning."""
+def record_outcome(job_id, event, note="", channel=None):
+    """Feedback loop: applied / skipped (with reason) / replied / screen / interview / rejected / offer ... feeds memory, learning and the funnel."""
     c = db()
-    c.execute("INSERT INTO outcomes(ts,job_id,event,note) VALUES(?,?,?,?)", (now(), job_id, event, note))
+    if channel is None:
+        channel = guess_channel(c, job_id)
+    c.execute("INSERT INTO outcomes(ts,job_id,event,note,channel) VALUES(?,?,?,?,?)", (now(), job_id, event, note, channel))
     c.commit()
+
+
+def guess_channel(c, job_id):
+    """Where an application came from, for the funnel: referral (a plan exists and was used), signal (direct outreach), inbox (you found it), yc, board."""
+    try:
+        if c.execute("SELECT 1 FROM referrals WHERE job_id=? AND state IN ('asked','sent','referred')", (job_id,)).fetchone():
+            return "referral"
+    except sqlite3.OperationalError:
+        pass
+    j = c.execute("SELECT id,ats FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not j:
+        return "signal" if str(job_id).startswith("sig:") else "other"
+    jid, ats = j["id"], (j["ats"] or "")
+    if jid.startswith("manual:"):
+        return "inbox"
+    if ats.startswith("yc") or "workatastartup" in ats:
+        return "yc"
+    return "board"
+
+
+# Statuses only you set (via mark / the GUI). Background work never overwrites them.
+USER_STATUS = ("applied", "interviewing", "offer", "rejected")
+# Statuses that mean you are working on the job: a closed posting is recorded as closed_at, the job keeps its status and stays visible.
+WORKED_STATUS = USER_STATUS + ("packet", "ready", "watch", "fill-partial", "fill-blocked", "fill-interrupted")
+
+
+def set_status(c, job_id, new, by="system", commit=True):
+    """The one place job status changes. Returns True if it changed. by='user' may change anything; background work cannot overwrite
+    a status you set, and 'closed' on a job you work on only stamps closed_at (and makes it inactive for the board) instead of hiding it."""
+    r = c.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not r:
+        return False
+    cur = r["status"] or "new"
+    if by != "user":
+        if new == "closed" and cur in WORKED_STATUS:
+            c.execute("UPDATE jobs SET closed_at=COALESCE(closed_at,?) WHERE id=?", (now(), job_id))
+            commit and c.commit()
+            return False
+        if cur in USER_STATUS and new != cur:
+            return False
+    if new == "closed":
+        c.execute("UPDATE jobs SET status='closed', active=0, closed_at=COALESCE(closed_at,?) WHERE id=?", (now(), job_id))
+    else:
+        c.execute("UPDATE jobs SET status=? WHERE id=?", (new, job_id))
+    commit and c.commit()
+    return cur != new
 
 
 # ------------------------------------------------------------------ notify

@@ -34,6 +34,9 @@ def memory_text(limit=3500):
 
 
 def add_memory(note):
+    import websafe
+    if websafe.scan(note):  # memory poisoning: text that tries to steer the model never becomes a durable memory
+        raise ValueError("not saved: the note contains instructions aimed at an AI (" + ", ".join(sorted({w for w, _ in websafe.scan(note)})) + ")")
     os.makedirs(os.path.dirname(MEM), exist_ok=True)
     with open(MEM, "a", encoding="utf-8") as f:
         f.write(f"- ({today()}) {note.strip()}\n")
@@ -115,7 +118,7 @@ def reflect(force=False):
 def auth_note():
     fd = PROFILE.get("form_defaults", {})
     home = PROFILE.get("preferences", {}).get("home_country") or fd.get("country") or "their home country"
-    return f"authorised to work in {home} only ({fd.get('work_authorization') or 'no other work authorisation stated'}); relocation {'welcome if the employer sponsors a visa' if PROFILE.get('preferences', {}).get('ok_with_relocation', True) else 'not wanted'}."
+    return f"authorised to work in {home} only ({fd.get('work_authorization') or fd.get('work_authorization_india') or fd.get('work_authorization_home') or 'no other work authorisation stated'}); relocation {'welcome if the employer sponsors a visa' if PROFILE.get('preferences', {}).get('ok_with_relocation', True) else 'not wanted'}."
 
 
 def persona():

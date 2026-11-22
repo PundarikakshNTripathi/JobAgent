@@ -147,8 +147,7 @@ def build_packet(job_id, force=False):
     open(os.path.join(d, "README.md"), "w", encoding="utf-8").write("\n".join(md))
     c.execute("INSERT OR REPLACE INTO packets(job_id,dir,at) VALUES(?,?,?)", (job_id, d, now()))
     cur = job["status"]
-    c.execute("UPDATE jobs SET status=? WHERE id=?", ("ineligible" if p.get("eligibility") == "blocked" else (cur if cur == "watch" else "packet"), job_id))
-    c.commit()
+    common.set_status(c, job_id, "ineligible" if p.get("eligibility") == "blocked" else (cur if cur in ("watch",) + common.USER_STATUS else "packet"))
     budget_add(c, "packets")
     try:
         if p.get("eligibility") != "blocked" and ((tri and (tri["fit"] or 0) >= 60) or cur == "watch"):
@@ -165,14 +164,15 @@ def pending_for_packets(limit):
     return c.execute("""SELECT j.id FROM jobs j JOIN triage t ON t.job_id=j.id
                         WHERE j.active=1 AND t.verdict IN ('APPLY','STRETCH') AND t.fit>=45
                           AND NOT EXISTS (SELECT 1 FROM packets p WHERE p.job_id=j.id)
-                          AND j.status NOT IN ('applied','skipped','dismissed','ineligible','closed')
+                          AND j.status NOT IN ('applied','skipped','dismissed','ineligible','closed') AND j.ghost IS NULL AND j.closed_at IS NULL
+                          AND COALESCE(j.gate,'') NOT IN ('visa-unclear','jd-unread')
                         ORDER BY (t.verdict='APPLY') DESC, t.fit DESC LIMIT ?""", (limit,)).fetchall()
 
 
 def _mark_ineligible(job_id, why):
     c = db()
-    c.execute("UPDATE jobs SET status='ineligible' WHERE id=? AND status NOT IN ('applied','watch')", (job_id,))
-    c.commit()
+    if (c.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone() or {"status": ""})["status"] != "watch":
+        common.set_status(c, job_id, "ineligible")
     log(f"jd gate: {job_id}: {why}")
 
 

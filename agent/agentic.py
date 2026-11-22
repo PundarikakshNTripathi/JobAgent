@@ -24,8 +24,9 @@ TOOLS (call exactly one per step as JSON {{"thought": "one or two sentences of r
 - job_notes {{"id": ""}}                        the user's own instructions saved for one job
 ACTIONS (these CREATE or CHANGE things and take minutes; use them only when the goal asks to prepare, plan, draft or mark something;
 to check what already exists, use picks_list / get_job / get_plan instead):
-- packet {{"id": ""}}                           prepare the application packet (cover letter, answers, resume pick)
-- referral {{"id": ""}}                         make a NEW referral plan (who to contact, drafted messages)
+- packet {{"id": "", "force": false}}           prepare the application packet (cover letter, answers, resume pick); force=true when the user insists despite the eligibility gate
+- referral {{"id": "", "force": false}}         make a NEW referral plan (who to contact, drafted messages)
+- add_opportunity {{"title": "", "company": "", "info_url": "", "apply_url": "", "notes": "", "prepare": "packet,referral"}}   add an opportunity that has NO standard job posting (blog post, program page, form link, a tweet) to My picks and prepare it; the description is read from info_url and notes
 - resume {{"id": ""}}                           tailored resume suggestions (only for strong fits)
 - mark {{"id": "", "status": "applied|skip", "reason": ""}}
 - remember {{"note": ""}}                       store a durable fact about the user
@@ -51,7 +52,8 @@ Choosing the first call (copy the pattern):
 - "what did we decide about Datadog?"            -> {{"tool": "recall", "args": {{"q": "Datadog"}}}}
 A step looks like: {{"thought": "...", "plan": "picks_list -> final", "tool": "picks_list", "args": {{"plan": "outdated"}}, "note": ""}}
 Finishing looks like: {{"final": "3 picks have outdated plans: Baseten - ..., ... (exactly as the result lists them)."}}
-Rules: never submit an application (the user does); never invent ids, names, links or numbers: everything in your final answer must come from a tool result
+Rules: never claim something was added, moved, prepared or marked unless a tool result says "VERIFIED:" with that state;
+when the user points at a page with no standard job posting (a blog post, program page, form), use add_opportunity, not inbox; never submit an application (the user does); never invent ids, names, links or numbers: everything in your final answer must come from a tool result
 or the context above (links that did not appear there are removed automatically); if a tool fails, say so instead of guessing; when a result already
 answers the goal, give the final answer from it straight away (count and list exactly what the result shows); at most {steps} steps.
 
@@ -68,7 +70,20 @@ def _run_cli(*args):
     return (p.stdout or "")[-1800:] or (p.stderr or "")[-600:]
 
 
+WEB_TOOLS = ("web_search", "fetch", "linkedin_profile", "open_page", "find_on_page", "browse_task", "linkedin_people")
+
+
 def tool(name, a):
+    """Run one tool. Anything read from the web comes back wrapped as untrusted data."""
+    out = _tool(name, a)
+    if name in WEB_TOOLS and isinstance(out, str) and not out.startswith(("browser:", "ERROR")):
+        import websafe
+        src = a.get("url") or a.get("q") or a.get("company") or name
+        return websafe.wrap(str(src), out)
+    return out
+
+
+def _tool(name, a):
     c = db()
     if name == "status":
         return _run_cli("status")
@@ -100,9 +115,18 @@ def tool(name, a):
         r = c.execute("SELECT j.*, t.verdict, t.fit, t.reason FROM jobs j LEFT JOIN triage t ON t.job_id=j.id WHERE j.id=?", (a.get("id", ""),)).fetchone()
         return json.dumps({k: (str(r[k])[:600] if r[k] is not None else None) for k in r.keys()}) if r else "no such job"
     if name in ("packet", "referral", "resume"):
-        return _run_cli(name, a.get("id", ""))
+        out = _run_cli(name, a.get("id", ""), *(["--force"] if a.get("force") else []))
+        return out + "\n" + verify(name, a.get("id", ""))
+    if name == "add_opportunity":
+        import inbox
+        text = "\n".join(x for x in (a.get("info_url", ""), a.get("apply_url", ""), f"{a.get('company', '')} - {a.get('title', '')}") if x.strip())
+        ctx = (a.get("notes", "") + f"\nPlease add this to my picks and prepare: {a.get('prepare') or 'packet,referral'}.").strip()
+        i = inbox.add(text, ctx)
+        res = inbox.process(i if isinstance(i, int) else i[0]) or []
+        return json.dumps(res)[:1500] + "\n" + "\n".join(verify("add_opportunity", r.get("id", "")) for r in res[:3])
     if name == "mark":
-        return _run_cli("mark", a.get("id", ""), a.get("status", "skip"), a.get("reason", ""))
+        out = _run_cli("mark", a.get("id", ""), a.get("status", "skip"), a.get("reason", ""))
+        return out + "\n" + verify("mark", a.get("id", ""), a.get("status", "skip"))
     if name == "remember":
         memory.add_memory(a.get("note", ""))
         return "saved"
@@ -149,7 +173,8 @@ def tool(name, a):
     if name == "inbox":
         import inbox
         i = inbox.add(a.get("text", ""), a.get("context", "from agent"))
-        return json.dumps(inbox.process(i))[:1500]
+        res = inbox.process(i if isinstance(i, int) else i[0]) or []
+        return json.dumps(res)[:1500] + "\n" + ("\n".join(verify("add_opportunity", r.get("id", "")) for r in res[:3]) or "VERIFIED: nothing was added (no opportunity found in that text). Say so; do not claim it was added.")
     if name == "needs_you_list":
         return needs_you_text()
     if name == "recall":
@@ -177,6 +202,25 @@ def tool(name, a):
         except browse.BrowseError as e:
             return f"browser: {e}"
     return f"unknown tool {name}"
+
+
+def verify(name, job_id, want=""):
+    """Read the database back after a tool that claims to change something, so the agent reports what is TRUE, not what it intended."""
+    c = db()
+    j = c.execute("SELECT id, company, title, status FROM jobs WHERE id=?", (job_id,)).fetchone() if job_id else None
+    if not j:
+        return f"VERIFIED: NOT DONE - there is no job {job_id!r} in the database."
+    picked = bool(c.execute("SELECT 1 FROM picks WHERE job_id=?", (job_id,)).fetchone())
+    pk = c.execute("SELECT dir FROM packets WHERE job_id=?", (job_id,)).fetchone()
+    rf = c.execute("SELECT dir FROM referrals WHERE job_id=?", (job_id,)).fetchone()
+    facts = f"{j['company']} - {j['title'][:60]}: status={j['status']}, in My picks={'yes' if picked else 'no'}, packet={'yes' if pk else 'no'}, referral plan={'yes' if rf else 'no'}"
+    if name == "packet" and not pk:
+        return "VERIFIED: NOT DONE - no packet exists. " + facts + ". Report the failure reason from the output above."
+    if name == "referral" and not rf:
+        return "VERIFIED: NOT DONE - no referral plan exists. " + facts + ". Report the failure reason from the output above."
+    if name == "mark" and want and j["status"] != {"skip": "skipped"}.get(want, want):
+        return "VERIFIED: NOT DONE - status is still " + j["status"] + "."
+    return "VERIFIED: " + facts
 
 
 def needs_you_text():
@@ -231,8 +275,9 @@ def connections_text(res):
 SPEC = {
     "recall": (["q"], {"q": str, "kinds": str}), "status": ([], {}), "top": ([], {"n": int}),
     "query_jobs": ([], {"verdict": str, "loc_class": str, "status": str, "has_referral": bool, "limit": int}),
-    "search_jobs": (["q"], {"q": str, "limit": int}), "get_job": (["id"], {"id": str}), "packet": (["id"], {"id": str}),
-    "referral": (["id"], {"id": str}), "resume": (["id"], {"id": str}), "get_plan": (["id"], {"id": str}), "outreach_queue": ([], {}), "job_notes": (["id"], {"id": str}), "mark": (["id", "status"], {"id": str, "status": str, "reason": str}),
+    "search_jobs": (["q"], {"q": str, "limit": int}), "get_job": (["id"], {"id": str}), "packet": (["id"], {"id": str, "force": bool}),
+    "referral": (["id"], {"id": str, "force": bool}), "resume": (["id"], {"id": str}),
+    "add_opportunity": (["title"], {"title": str, "company": str, "info_url": str, "apply_url": str, "notes": str, "prepare": str}), "get_plan": (["id"], {"id": str}), "outreach_queue": ([], {}), "job_notes": (["id"], {"id": str}), "mark": (["id", "status"], {"id": str, "status": str, "reason": str}),
     "remember": (["note"], {"note": str}), "web_search": (["q"], {"q": str}), "fetch": (["url"], {"url": str}), "inbox_list": ([], {}),
     "inbox_retry": ([], {"id": str}), "picks_list": ([], {"plan": str, "packet": str}), "inbox": (["text"], {"text": str, "context": str}), "needs_you_list": ([], {}),
     "linkedin_people": (["company"], {"company": str, "degree": str}), "linkedin_profile": (["url"], {"url": str}),
@@ -248,6 +293,7 @@ INTENT = {
     "resume": r"\b(resume|cv)\b",
     "mark": r"\b(mark|applied|skip|dismiss|reject|not interested)\b",
     "inbox": r"\b(add|ingest|process|save|track)\b",
+    "add_opportunity": r"\b(add|track|save|wishlist|pick|prepare|apply|application|work on)\b",
     "inbox_retry": r"\b(retry|again|rerun|re-run)\b",
     "remember": r"\b(remember|note that|keep in mind|from now on|prefer)\b",
 }

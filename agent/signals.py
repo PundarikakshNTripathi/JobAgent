@@ -636,18 +636,44 @@ def run_all(collect=True):
             except Exception as e:
                 log(f"signals: {k} failed: {str(e)[:200]}")
     judged = judge(c)
+    expire_old(c)
     added = build_queue(c, conf)
     msg = f"signals: new {got['x']} from X, {got['linkedin']} from LinkedIn, {got['news']} seed rounds from news; judged {judged}; queued {added} for today"
     log(msg)
     return msg
 
 
+KEEP_DAYS = 30  # an unsent target stays in the queue until you send/skip it, it is confirmed gone, or it is this old
+
+
+def expire_old(c):
+    """Queued targets are never dropped just because a day passed; only when confirmed gone (status 'gone') or older than KEEP_DAYS."""
+    cut = (dt.date.today() - dt.timedelta(days=KEEP_DAYS)).isoformat()
+    n = c.execute("UPDATE signals SET status='expired' WHERE status='queued' AND day!='' AND day<?", (cut,)).rowcount
+    c.commit()
+    return n
+
+
 def today(c=None, day=None):
+    """Today's targets plus every earlier one you have not sent or skipped yet (marked earlier=True, with its age), and recent sent/skipped ones."""
     c = _table(c)
     day = day or dt.date.today().isoformat()
-    rows = [dict(r) for r in c.execute("SELECT * FROM signals WHERE day=? AND status IN ('queued','sent','skipped') ORDER BY status='sent', relevance DESC", (day,))]
+    cut = (dt.date.today() - dt.timedelta(days=KEEP_DAYS)).isoformat()
+    rows = [dict(r) for r in c.execute("""SELECT * FROM signals WHERE (day=? AND status IN ('queued','sent','skipped'))
+                                          OR (status='queued' AND day!='' AND day<? AND day>=?)
+                                          OR (status IN ('sent','skipped') AND day>=? AND day<?)
+                                          ORDER BY status='sent', day=? DESC, relevance DESC""", (day, day, cut, cut, day, day))]
     for r in rows:
         r["contact"], r["angle"] = json.loads(r["contact"] or "{}"), json.loads(r["angle"] or "{}")
+        r["earlier"] = r["day"] != day
+        try:
+            r["age_days"] = (dt.date.fromisoformat(day) - dt.date.fromisoformat(r["day"])).days
+        except ValueError:
+            r["age_days"] = 0
+        try:
+            r["draft"] = json.loads(r.get("draft") or "{}")
+        except (ValueError, TypeError):
+            r["draft"] = {}
     return rows
 
 

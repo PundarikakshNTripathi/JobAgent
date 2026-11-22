@@ -6,6 +6,7 @@ over CDP. The agent can fill everything but is blocked from submitting:
   3. hard subprocess timeout shorter than the guard window.
 You review the filled tab and press Submit yourself."""
 import json, os, re, shutil, socket, subprocess, time, urllib.request
+import common
 from common import db, log, now, run_claude, extract_json, DATA, SETTINGS, PROFILE, budget_add, notify
 
 PORT = SETTINGS["chrome_debug_port"]
@@ -122,12 +123,15 @@ def ensure_chrome():
         raise RuntimeError("Chrome/Edge not found")
     prof = SETTINGS.get("chrome_profile_dir") or os.path.join(DATA, "chrome-profile")
     os.makedirs(prof, exist_ok=True)
-    kw = {}
+    kw = {"start_new_session": True} if os.name != "nt" else {}
     if os.name == "nt":  # start minimized and without activating, so a background fill never steals focus
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
         kw["startupinfo"] = si
+        # detached + own process group: the browser (and the forms waiting for your Submit) outlives the task that started it,
+        # including an aborted or timed-out one
+        kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
     subprocess.Popen([exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check", "--start-minimized", "about:blank"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
     for _ in range(40):
@@ -149,7 +153,44 @@ def submission_watchdog():
     return [(t.get("title", ""), t.get("url", "")) for t in tabs if t.get("type") == "page" and any(h in t.get("url", "").lower() for h in SUBMITTED_HINT)]
 
 
-def fill_job(job_id, force=False):
+def open_tabs():
+    """URLs of the agent browser's open tabs, or None when the browser is not running."""
+    try:
+        tabs = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json", timeout=4).read())
+    except Exception:
+        return None
+    return [t.get("url", "") for t in tabs if t.get("type") == "page"]
+
+
+def _same_page(a, b):
+    import urllib.parse as up
+    pa, pb = up.urlparse(a or ""), up.urlparse(b or "")
+    return pa.netloc == pb.netloc and pa.path.rstrip("/") == pb.path.rstrip("/")
+
+
+def check_filled_tabs():
+    """Forms waiting for your Submit live only in the agent browser. If that tab (or the browser) is gone, the job becomes 'fill-interrupted'
+    so the app offers Refill instead of pretending it is still ready. Returns the job ids that changed."""
+    c = db()
+    rows = c.execute("""SELECT j.id, p.fill_report FROM jobs j JOIN packets p ON p.job_id=j.id WHERE j.status IN ('ready','fill-partial')""").fetchall()
+    if not rows:
+        return []
+    tabs = open_tabs()
+    changed = []
+    for r in rows:
+        try:
+            url = (json.loads(r["fill_report"] or "{}") or {}).get("page_url", "")
+        except ValueError:
+            url = ""
+        if tabs is None or not url or not any(_same_page(url, t) for t in tabs):
+            if common.set_status(c, r["id"], "fill-interrupted"):
+                changed.append(r["id"])
+    if changed:
+        log(f"fill: {len(changed)} filled form(s) no longer open in the agent browser; marked for refill")
+    return changed
+
+
+def fill_job(job_id, force=False, refill=False):
     import jd
     jd.gate(job_id, force=force)
     c = db()
@@ -162,8 +203,7 @@ def fill_job(job_id, force=False):
         rep = {"status": "BLOCKED", "filled": [], "needs_user": ["This employer's application system requires you to create an account or sign in first, which the agent never does. Apply manually: the packet has your cover letter, answers and resume."],
                "blocker": "account required (Workday/iCIMS/Taleo-style system)", "submit_button_label": "", "page_url": job["url"]}
         c.execute("UPDATE packets SET filled_at=?, fill_report=? WHERE job_id=?", (now(), json.dumps(rep), job_id))
-        c.execute("UPDATE jobs SET status='fill-blocked' WHERE id=?", (job_id,))
-        c.commit()
+        common.set_status(c, job_id, "fill-blocked")
         with open(os.path.join(pk["dir"], "FILL_REPORT.md"), "w", encoding="utf-8") as f:
             f.write(f"# Fill report ({now()})\nstatus: **BLOCKED**\n\n" + rep["needs_user"][0] + "\n")
         log(f"fill skipped (account wall): {job['company']} | {job['title']}")
@@ -174,9 +214,16 @@ def fill_job(job_id, force=False):
     open(guard, "w", encoding="utf-8").write(GUARD_JS % until)
     log(f"filling {job['company']} | {job['title']} ...")
     rep = None
-    try:  # cheap path first: script reads the form, one model call maps values, Playwright types them
-        import formfill
-        rep = formfill.fill(job, data, GUARD_JS % until)
+    saved = None
+    if refill and pk["fill_values"]:
+        try:
+            saved = json.loads(pk["fill_values"]) or None
+        except ValueError:
+            saved = None
+    try:  # cheap path first: script reads the form, one model call maps values (none on a refill), Playwright types them
+        import formfill, browse
+        with browse.session():
+            rep = formfill.fill(job, data, GUARD_JS % until, saved=saved)
     except Exception as e:
         log(f"formfill failed ({str(e)[:200]}); using the model-driven fill")
     if rep:
@@ -191,6 +238,7 @@ def fill_job(job_id, force=False):
                  f"cover letter PDF {data.get('cover_pdf') or '(none: paste the text)'}\n\nCOVER LETTER TEXT\n{data.get('cover_letter', '')}\n\nPREPARED ANSWERS\n"
                  + json.dumps(data.get("answers", {}), indent=1) + "\n\nFORM QUESTIONS\n" + json.dumps(data.get("form_questions", []), indent=1))
         w = webagent.run(goal, job["url"], mode="form", kind="fill", max_steps=60, init_script=GUARD_JS % until, max_text=2500,
+                         allowed_files=[data.get("resume_path", ""), data.get("cover_pdf", ""), PROFILE.get("transcript_pdf", "")],
                          result_hint='{"status":"READY_TO_SUBMIT|PARTIAL|BLOCKED","filled":[],"needs_user":[],"blocker":"","submit_button_label":"","page_url":""}')
         if isinstance(w["result"], dict) and w["result"].get("status"):
             rep = dict(w["result"], how="browser loop")
@@ -219,10 +267,12 @@ def fill_job(job_id, force=False):
 
 
 def _finish(c, job, pk, job_id, rep):
+    values = rep.pop("values", None)
     c.execute("UPDATE packets SET filled_at=?, fill_report=? WHERE job_id=?", (now(), json.dumps(rep), job_id))
+    if values:
+        c.execute("UPDATE packets SET fill_values=? WHERE job_id=?", (json.dumps(values, ensure_ascii=False), job_id))
     status = rep.get("status", "PARTIAL")
-    c.execute("UPDATE jobs SET status=? WHERE id=?", ("ready" if status == "READY_TO_SUBMIT" else "fill-" + status.lower(), job_id))
-    c.commit()
+    common.set_status(c, job_id, "ready" if status == "READY_TO_SUBMIT" else "fill-" + status.lower())
     budget_add(c, "fills")
     with open(os.path.join(pk["dir"], "FILL_REPORT.md"), "w", encoding="utf-8") as f:
         f.write(f"# Fill report ({now()})\nstatus: **{status}**\n\nfilled: {rep.get('filled')}\n\nneeds you:\n" + "\n".join(f"- {x}" for x in rep.get("needs_user", [])) +

@@ -174,7 +174,7 @@ def fetch_all():
     with cf.ThreadPoolExecutor(8) as ex:
         for c, js, err in ex.map(one, ats_companies):
             for j in js:
-                j["_tier"], j["_cat"] = c["tier"], c["category"]
+                j["_tier"], j["_cat"], j["_src"] = c["tier"], c["category"], c["name"]
             jobs += js
             health[c["name"]] = err or len(js)
     tiers = {c["name"].lower(): (c["tier"], c["category"]) for c in COMPANIES}
@@ -201,6 +201,7 @@ def fetch_all():
             for j in js:
                 t = wd_meta.get(j["company"]) or tiers.get(j["company"].lower()) or src_tier.get(j["ats"]) or ("C", "bigco")
                 j["_tier"], j["_cat"] = t
+                j["_src"] = name
             jobs += js
             health[name] = len(js)
         except Exception as e:

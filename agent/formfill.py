@@ -166,8 +166,14 @@ def _fill_one(page, fr, f, val, files):
     return "check"  # picked by keyboard: probably right, but the user should glance at it
 
 
-def fill(job, data, guard_js):
-    """Returns a fill report dict, or None if the form could not be read (caller falls back to the model-driven fill)."""
+def _fkey(f):
+    """Stable key for a form field across page loads (the data-ja ids are assigned fresh on every scan)."""
+    return f["type"] + "|" + re.sub(r"[^a-z0-9]+", " ", (f.get("label") or "").lower()).strip()[:120]
+
+
+def fill(job, data, guard_js, saved=None):
+    """Returns a fill report dict, or None if the form could not be read (caller falls back to the model-driven fill).
+    saved = values from an earlier fill ({field key: value}): a refill replays them with no model call; only fields it cannot match are mapped again."""
     ctx = browse._context()
     token = (job["id"] or "").split(":")[-1]
     for old in list(ctx.pages):  # a re-fill replaces the earlier tab for the same job instead of piling up tabs
@@ -187,12 +193,22 @@ def fill(job, data, guard_js):
         return None
     prof = {k: PROFILE.get(k) for k in ("name", "first_name", "last_name", "email", "phone", "location", "linkedin", "github", "website", "twitter", "education", "graduation",
                                         "education_start_year", "education_notes", "experience", "skills_defensible", "form_defaults")}
-    text, _ = run_claude(MAP_PROMPT.format(company=job["company"], title=job["title"], profile=json.dumps(prof, ensure_ascii=False)[:6000],
-                                           answers=json.dumps(data.get("answers", {}), ensure_ascii=False)[:5000], formq=json.dumps(data.get("form_questions", []), ensure_ascii=False)[:3000],
-                                           cover=(data.get("cover_letter") or "")[:3000], fields=json.dumps(fields, ensure_ascii=False)[:14000]),
-                         kind="fill", timeout=300, max_turns=1)
-    m = extract_json(text)
-    vals, needs = m.get("values", {}) or {}, list(m.get("needs_user", []) or [])
+    vals, needs = {}, []
+    todo = fields
+    if saved:
+        for f in fields:
+            if _fkey(f) in saved:
+                vals[f["id"]] = saved[_fkey(f)]
+        todo = [f for f in fields if f["id"] not in vals and f.get("required") and f["type"] != "file"]  # only what a refill cannot replay
+        log(f"formfill: refill replays {len(vals)} saved values; {len(todo)} fields need mapping")
+    if todo:
+        text, _ = run_claude(MAP_PROMPT.format(company=job["company"], title=job["title"], profile=json.dumps(prof, ensure_ascii=False)[:6000],
+                                               answers=json.dumps(data.get("answers", {}), ensure_ascii=False)[:5000], formq=json.dumps(data.get("form_questions", []), ensure_ascii=False)[:3000],
+                                               cover=(data.get("cover_letter") or "")[:3000], fields=json.dumps(todo, ensure_ascii=False)[:14000]),
+                             kind="fill", timeout=300, max_turns=1)
+        m = extract_json(text)
+        vals.update(m.get("values", {}) or {})
+        needs += list(m.get("needs_user", []) or [])
     files = {"resume": data.get("resume_path", ""), "cover": data.get("cover_pdf", ""), "transcript": PROFILE.get("transcript_pdf", "")}
     by = {f["id"]: f for f in fields}
     filled = 0
@@ -218,5 +234,6 @@ def fill(job, data, guard_js):
     needs += [f"{l}: required, left for you" for l in empty_req if not any(l[:40] in n for n in needs)]
     status = "READY_TO_SUBMIT" if not needs else "PARTIAL"
     page.bring_to_front()
+    keep = {_fkey(by[i]): v for i, v in vals.items() if i in by and v not in (None, "") and by[i]["type"] != "file"}
     return {"status": status, "filled": [f"{filled} of {len(fields)} fields"], "needs_user": needs, "blocker": "" if status == "READY_TO_SUBMIT" else "some fields need you",
-            "submit_button_label": "(not pressed)", "page_url": page.url, "how": "deterministic"}
+            "submit_button_label": "(not pressed)", "page_url": page.url, "how": "refill" if saved else "deterministic", "values": keep}

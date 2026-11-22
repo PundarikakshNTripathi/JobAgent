@@ -168,12 +168,17 @@ def page_text(url, max_chars=12000):
     with session():
         page = _open(url)
         try:
+            import websafe
             for _ in range(3):  # let SPAs render
+                try:
+                    page.evaluate(websafe.HIDE_JS)  # invisible text never reaches a model
+                except Exception:
+                    pass
                 r = page.evaluate(TEXT_JS, max_chars)
                 if len(r["text"]) > 800:
                     break
                 time.sleep(2)
-            return r["text"]
+            return websafe.sanitize(r["text"], url)[0]
         finally:
             page.close()
 
@@ -183,8 +188,15 @@ def open_page(url, max_chars=6000, links=40):
     with session():
         page = _open(url)
         try:
+            import websafe
+            try:
+                page.evaluate(websafe.HIDE_JS)
+            except Exception:
+                pass
             r = page.evaluate(TEXT_JS, max_chars)
-            r["links"] = page.evaluate(LINKS_JS, links)
+            r["text"] = websafe.sanitize(r["text"], url)[0]
+            r["title"] = websafe.clean(r.get("title", ""))[:200]
+            r["links"] = [l for l in page.evaluate(LINKS_JS, links) if websafe.url_ok(l["h"])[0]]
             return r
         finally:
             page.close()
