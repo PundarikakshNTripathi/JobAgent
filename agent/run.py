@@ -20,6 +20,13 @@
             signals [collect|queue|list]   fresh hiring posts + seed rounds -> today's 20 direct-outreach targets
             gui [--no-open]       local web GUI                       yc-profile  rewrite your YC profile (truthful)
  SCHEDULE   install-schedule | remove-schedule | enable-schedule | disable-schedule | set-times HH:MM [HH:MM]   (default 09:00 18:00)
+ FIND MORE  discover              LinkedIn Jobs (24 h), Work at a Startup, X (programs, competitions, hackathons), boards of funded startups
+            events [strategy <id>]   conference deadlines, competitions, hackathons;  programs [strategy <id>]   research internships & fellowships
+ AFTER      reply <id> "<their reply>"   classify an employer reply, record it, next step;  interview <id>   prep plan;  stories [--force]   your story bank
+            mark <id> replied|screen|interview|offer|rejected|ghosted    funnel   conversion by channel;  github   propose project notes from GitHub
+ CV         cv <id>               tailored one-page PDF resume: your verified bullets chosen and ordered for the job (never rewritten), compiled, one page enforced
+ RESEARCH   research <company> [--force]   read the company's site, LinkedIn page and news; show the facts and every page read
+            sponsor <id>          settle a 'Visa unclear' job: research whether the employer sponsors visas
  GATE       regate [--no-browser]  re-check every match/pick/packet against its full posting (years, degree, seniority, visa)
  PAUSE      pause [all|local|api|subscription] | resume [..]   stop all AI use (local model/GPU, API keys, subscriptions) until you resume
  MEMORY     reflect               update the agent's memory + scoring tweaks from your outcomes
@@ -74,6 +81,17 @@ def cycle():
             signals.run_all()
         except Exception as ex:
             log(f"signals failed: {ex}")
+        stage("Finding more opportunities")
+        try:
+            import discover
+            discover.run_all()
+        except Exception as ex:
+            log(f"discovery failed: {ex}")
+        try:  # weekly: what changed on your GitHub becomes proposals in About me (you accept or reject them)
+            import github_sync
+            github_sync.sync()
+        except Exception as ex:
+            log(f"github sync failed: {ex}")
         stage("Refreshing what you are working on")
         try:
             import maintenance
@@ -261,6 +279,54 @@ def main():
         common.add_pick(a[1], {"linkedin": "referral"}.get(cmd, cmd))  # the user chose this job: list it under My picks
     if cmd == "cycle":
         cycle()
+    elif cmd == "reply":
+        import interview
+        print(json.dumps(interview.reply(a[1], " ".join(a[2:]) or sys.stdin.read()), indent=1, ensure_ascii=False))
+    elif cmd == "interview":
+        import interview
+        print(json.dumps(interview.prep(a[1]), indent=1, ensure_ascii=False))
+    elif cmd == "stories":
+        import interview
+        for s in interview.stories(force="--force" in sys.argv):
+            print(f"- {s.get('title')} [{', '.join(s.get('use_for') or [])}]\n  {s.get('result', '')}")
+    elif cmd == "github":
+        import github_sync
+        print(github_sync.sync(force=True))
+    elif cmd == "funnel":
+        import interview
+        print(json.dumps(interview.funnel(), indent=1))
+    elif cmd == "cv":
+        import cv
+        try:
+            print(json.dumps(cv.build(a[1]), indent=1))
+        except cv.CVError as e:
+            print(f"cv: {e}")
+            sys.exit(1)
+    elif cmd == "discover":
+        import discover
+        print(json.dumps(discover.run_all(force=True), indent=1, default=str))
+    elif cmd == "events":
+        import events
+        if len(a) > 2 and a[1] == "strategy":
+            print(json.dumps(events.strategy(a[2]), indent=1, ensure_ascii=False))
+        else:
+            print(json.dumps(events.refresh(force=True), indent=1))
+            for e in events.listing()[:40]:
+                print(f"{(e['deadline'] or 'rolling')[:10]:10}  {e['kind']:11} {e['name'][:50]:50} {e['prize'][:14]:14} fit {int(e['fit'] or 0)}")
+    elif cmd == "programs":
+        import programs
+        if len(a) > 2 and a[1] == "strategy":
+            print(json.dumps(programs.strategy(a[2]), indent=1, ensure_ascii=False))
+        else:
+            print(f"checked {programs.refresh(limit=20, force='--force' in sys.argv)} program pages")
+    elif cmd == "sponsor":
+        import research
+        print(json.dumps(research.sponsorship(a[1]), indent=1))
+    elif cmd == "research":
+        import research
+        d = research.company(" ".join(a[1:]), force="--force" in sys.argv)
+        print(research.brief(d, 6000) or "nothing found")
+        print("\nWHAT I READ:\n" + "\n".join(f"  {p['chars']:>6} chars  {p['why']:<22} {p['url']}" + (f"  FLAGGED: {p['flags']}" if p['flags'] else "") for p in research.what_i_read(d)))
     elif cmd == "regate":
         import maintenance
         print(json.dumps(maintenance.regate(use_browser="--no-browser" not in sys.argv), indent=1))
@@ -428,6 +494,11 @@ def main():
     elif cmd == "mark":
         c = db()
         st = {"skip": "skipped"}.get(a[2], a[2])
+        if st in ("replied", "screen", "interview", "offer", "rejected", "ghosted"):
+            import interview
+            interview.record(a[1], st, " ".join(a[3:]))
+            print("ok")
+            return
         common.set_status(c, a[1], st, by="user")
         record_outcome(a[1], st, " ".join(a[3:]))
         print("ok")

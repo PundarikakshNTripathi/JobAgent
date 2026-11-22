@@ -14,9 +14,9 @@
         "effort": ""
       },
       "ingest": {
-        "provider": "local",
-        "model": "local",
-        "effort": ""
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
       },
       "chat": {
         "provider": "claude",
@@ -112,6 +112,16 @@
         "provider": "claude",
         "model": "claude-sonnet-5-5",
         "effort": "medium"
+      },
+      "research": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "review": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
       }
     },
     "fallbacks": [
@@ -138,8 +148,8 @@
         "effort": ""
       },
       "ingest": {
-        "provider": "local",
-        "model": "local",
+        "provider": "agy",
+        "model": "gemini-3.8-flash-medium",
         "effort": ""
       },
       "scout": {
@@ -230,6 +240,16 @@
       "yc": {
         "provider": "agy",
         "model": "gemini-3.8-flash-medium",
+        "effort": ""
+      },
+      "research": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "review": {
+        "provider": "agy",
+        "model": "gemini-3.8-flash-high",
         "effort": ""
       }
     },
@@ -349,6 +369,16 @@
         "provider": "claude",
         "model": "claude-sonnet-5-5",
         "effort": "high"
+      },
+      "research": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "review": {
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high"
       }
     },
     "fallbacks": [
@@ -463,6 +493,16 @@
         "effort": ""
       },
       "angles": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "research": {
+        "provider": "local",
+        "model": "local",
+        "effort": ""
+      },
+      "review": {
         "provider": "local",
         "model": "local",
         "effort": ""

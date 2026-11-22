@@ -153,6 +153,16 @@
         "provider": "auto",
         "model": "",
         "effort": "medium"
+      },
+      "research": {
+        "provider": "auto",
+        "model": "",
+        "effort": "low"
+      },
+      "review": {
+        "provider": "auto",
+        "model": "",
+        "effort": "high"
       }
     },
     "fallbacks": [
@@ -193,7 +203,8 @@
         "referral-plan",
         "webplan"
       ]
-    }
+    },
+    "force_local_research": true
   },
   "high_stakes": {
     "categories": [
@@ -269,7 +280,8 @@
   "referrals_per_cycle": 3,
   "visa_checks_per_cycle": 40,
   "jd_gate": {
-    "max_yoe": 1
+    "max_yoe": 1,
+    "yoe_block_at": 1
   },
   "connections_max_companies": 15,
   "schedule_times": [
@@ -295,5 +307,12 @@
       "katieschwartz",
       "suraj_sharma14"
     ]
+  },
+  "browser": {
+    "parallel": 2
+  },
+  "tasks": {
+    "max_parallel": 3,
+    "default_timeout_min": 40
   }
 }

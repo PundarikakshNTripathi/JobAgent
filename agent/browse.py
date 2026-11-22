@@ -59,52 +59,121 @@ def close():
         _state.update(pw=None, browser=None)
 
 
-def _xacquire(timeout=300):
-    """One JobAgent process drives the agent Chrome at a time. Two processes navigating the same Chrome at once made pages hang until the
-    45 s timeout (a Baseten and a Google scout ran together and the Google one failed). Re-entrant within a process."""
+def _try_lock(path):
+    fh = open(path, "a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fh
+    except OSError:
+        fh.close()
+        return None
+
+
+def _unlock(fh):
+    try:
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    fh.close()
+
+
+def slots():
+    """How many JobAgent tasks may use the agent Chrome at the same time (each in its own tab). settings browser.parallel, default 2."""
+    return max(1, int(SETTINGS.get("browser", {}).get("parallel", 2)))
+
+
+def _xacquire(timeout=600):
+    """Take one of the browser slots (cross-process). Each task drives its own tab, so up to slots() tasks browse in parallel; LinkedIn and X
+    stay single-lane through their own site locks (see hold_site). Re-entrant within a process."""
     if _state.get("xdepth"):
         _state["xdepth"] += 1
         return
-    fh = open(os.path.join(common.DATA, "browser.lock"), "a+")
     t0 = time.time()
     while True:
-        try:
-            if os.name == "nt":
-                import msvcrt
-                fh.seek(0)
-                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            break
-        except OSError:
-            if time.time() - t0 > timeout:
-                fh.close()
-                raise BrowseError("another JobAgent task has been using the browser for 5 minutes; try again shortly")
-            time.sleep(1.0)
-    _state["xfh"], _state["xdepth"] = fh, 1
+        for i in range(slots()):
+            fh = _try_lock(os.path.join(common.DATA, f"browser-slot-{i}.lock"))
+            if fh:
+                _state["xfh"], _state["xdepth"] = fh, 1
+                return
+        if time.time() - t0 > timeout:
+            raise BrowseError(f"all {slots()} browser slots have been busy for {int(timeout // 60)} minutes; try again shortly")
+        time.sleep(1.0)
 
 
 def _xrelease():
     _state["xdepth"] = max(0, _state.get("xdepth", 0) - 1)
-    if _state["xdepth"] == 0 and _state.get("xfh"):
-        fh = _state.pop("xfh")
-        try:
-            if os.name == "nt":
-                import msvcrt
-                fh.seek(0)
-                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(fh, fcntl.LOCK_UN)
-        except OSError:
-            pass
-        fh.close()
+    if _state["xdepth"] == 0:
+        if _state.get("xfh"):
+            _unlock(_state.pop("xfh"))
+        for site, fh in list(_state.get("sites", {}).items()):  # site locks are held until the task's browser session ends
+            _unlock(fh)
+        _state["sites"] = {}
+
+
+SOCIAL = {"linkedin.com": "linkedin", "x.com": "x", "twitter.com": "x"}
+
+
+def site_of(url):
+    host = (urllib.parse.urlparse(url or "").hostname or "").lower()
+    return next((v for k, v in SOCIAL.items() if host == k or host.endswith("." + k)), "")
+
+
+def hold_site(url, timeout=900):
+    """LinkedIn and X are used by one JobAgent task at a time (human pace for your accounts), and never while a security check is pending."""
+    site = site_of(url)
+    if not site:
+        return
+    paused = social_paused(site)
+    if paused:
+        raise BrowseError(f"{site} browsing is paused until {paused[11:16]} after a security check or captcha; open the agent browser and clear it, or wait")
+    if site in _state.setdefault("sites", {}):
+        return
+    t0 = time.time()
+    while True:
+        fh = _try_lock(os.path.join(common.DATA, f"site-{site}.lock"))
+        if fh:
+            _state["sites"][site] = fh
+            return
+        if time.time() - t0 > timeout:
+            raise BrowseError(f"another JobAgent task has been using {site} for {int(timeout // 60)} minutes; it stays single-lane to protect your account")
+        time.sleep(2.0)
+
+
+def social_paused(site):
+    try:
+        until = common.meta_get(db(), "social_pause:" + site)
+    except Exception:
+        return None
+    return until if until and until > now() else None
+
+
+def pause_social(site, why, hours=24):
+    """Kill switch: a checkpoint, captcha or security page on LinkedIn/X stops ALL automated use of that site for a day and tells you."""
+    import datetime as _dt
+    until = (_dt.datetime.now() + _dt.timedelta(hours=hours)).isoformat(timespec="seconds")
+    common.meta_set(db(), "social_pause:" + site, until)
+    log(f"{site}: security check or captcha ({why}); all automated {site} browsing paused for {hours} h")
+    try:
+        common.notify("JobAgent paused " + site, f"{site} showed a security check. Automated browsing there is paused for {hours} hours. Open the agent browser to clear it.")
+    except Exception:
+        pass
 
 
 @contextlib.contextmanager
 def session():
-    """Exclusive use of the agent browser (this thread and this process)."""
+    """A browser slot for this task (shared with up to slots()-1 other tasks, each in its own tab). Re-entrant."""
     with _lock:
         _xacquire()
         try:
@@ -123,6 +192,7 @@ WALL = re.compile(r"/(login|signin|uas/login|checkpoint|authwall)|captcha|challe
 def _open(url, guard=False, wait=2.5):
     if _state["pages"] >= MAX_PAGES_PER_RUN:
         raise BrowseError(f"page budget for this run reached ({MAX_PAGES_PER_RUN}); stopping to stay human-paced")
+    hold_site(url)
     ctx = _context()
     page = ctx.new_page()
     if guard or "linkedin.com" in url:
@@ -142,6 +212,8 @@ def _open(url, guard=False, wait=2.5):
     time.sleep(wait)
     if WALL.search(page.url):
         page.close()
+        if site_of(url) and re.search(r"checkpoint|captcha|challenge", page.url, re.I):
+            pause_social(site_of(url), page.url[:120])
         site = urllib.parse.urlparse(url).netloc
         raise BrowseError(f"{site} wants you to log in (or shows a security check). Open the agent browser (GUI: Settings -> Open agent browser), log in once, then retry.")
     return page
@@ -179,6 +251,39 @@ def page_text(url, max_chars=12000):
                     break
                 time.sleep(2)
             return websafe.sanitize(r["text"], url)[0]
+        finally:
+            page.close()
+
+
+def read_full(url, max_chars=12000, links=80, max_scrolls=8):
+    """Read a page the way a person does: let it render, scroll until no new text appears (lazy-loaded posts, feeds, long pages), then take
+    the visible text. Hidden text is removed and injections are cut (websafe). Returns {title, url, text, links, scrolls}."""
+    import websafe
+    with session():
+        page = _open(url, wait=1.5)
+        try:
+            last, same, n = -1, 0, 0
+            for n in range(max_scrolls):
+                cur = page.evaluate("() => (document.body && document.body.innerText || '').length")
+                if cur == last:
+                    same += 1
+                    if same >= 2 and cur > 400:
+                        break
+                else:
+                    same = 0
+                last = cur
+                page.evaluate("() => window.scrollBy(0, Math.max(600, innerHeight * 0.9))")
+                page.wait_for_timeout(1100)
+            try:
+                page.evaluate(websafe.HIDE_JS)
+            except Exception:
+                pass
+            r = page.evaluate(TEXT_JS, max_chars)
+            r["text"] = websafe.sanitize(r["text"], url)[0]
+            r["title"] = websafe.clean(r.get("title", ""))[:200]
+            r["links"] = [l for l in page.evaluate(LINKS_JS, links) if websafe.url_ok(l["h"])[0]]
+            r["scrolls"] = n + 1
+            return r
         finally:
             page.close()
 

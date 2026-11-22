@@ -1,0 +1,15 @@
+{
+  "_about": "Research internships, residencies and fellowships tracked in 'Research & fellowships'. Only the official page is listed here; JobAgent reads it to fill in the current window, deadline and eligibility (with the source), so nothing about dates is hard-coded. Add your own in config/programs.json (same shape).",
+  "programs": [
+    {"name": "MATS (ML Alignment & Theory Scholars)", "org": "MATS", "url": "https://www.matsprogram.org/", "track": "safety"},
+    {"name": "SPAR: Supervised Program for Alignment Research", "org": "SPAR", "url": "https://sparai.org/", "track": "safety"},
+    {"name": "ERA Fellowship", "org": "ERA Cambridge", "url": "https://erafellowship.org/", "track": "safety"},
+    {"name": "Cohere Labs Scholars Program", "org": "Cohere Labs", "url": "https://cohere.com/research/scholars-program", "track": "research"},
+    {"name": "OpenAI Residency", "org": "OpenAI", "url": "https://openai.com/residency/", "track": "research"},
+    {"name": "Mitacs Globalink Research Internship", "org": "Mitacs (Canada)", "url": "https://www.mitacs.ca/our-programs/globalink-research-internship-students/", "track": "academic"},
+    {"name": "ETH Zurich Student Summer Research Fellowship", "org": "ETH Zurich, D-INFK", "url": "https://inf.ethz.ch/studies/summer-research-fellowship.html", "track": "academic"},
+    {"name": "OIST Research Internship", "org": "Okinawa Institute of Science and Technology", "url": "https://www.oist.jp/research-internship", "track": "academic"},
+    {"name": "CMU Robotics Institute Summer Scholars (RISS)", "org": "Carnegie Mellon University", "url": "https://riss.ri.cmu.edu/", "track": "academic"},
+    {"name": "Caltech SURF", "org": "Caltech", "url": "https://sfp.caltech.edu/undergraduate-research/programs/surf", "track": "academic"}
+  ]
+}

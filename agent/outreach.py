@@ -7,43 +7,52 @@ from llm import run
 
 PROMPT = """{style}
 
-TASK: write the messages {name} will send personally on LinkedIn/email. They must sound like {name} typing quickly, not like an assistant. Never use pronouns for {name} that aren't given; use "I" in the messages.
+TASK: write the messages {name} will send personally. They must read like {name} typed them: plain, specific, a little informal, and they must
+FLOW: one line on who {name} is, then why THIS person (something specific they built, wrote or posted, from the research), then one clear ask.
+No warm-up sentences, no compliments without a fact behind them, no jumping straight to a topic without saying who is writing.
+Use "I" for {name}; never use pronouns for {name} that aren't given.
 
 TRUE FACTS ABOUT {name} (the only claims allowed): {facts}
 HARD RULES: {rules}
 
 TARGET JOB: {company} | {title} | {location}
 WHY THIS ROLE FITS (from earlier analysis): {fit}
+{dossier}
 
 PEOPLE (research already done; use only what is written here as the hook, never invent details about them):
 {people}
 
 For EACH person return one object:
 - "name"
-- "connect_note": max 250 characters, for 2nd-degree or cold contacts; "" if they are already a 1st-degree connection
-- "dm_short": 35-55 words
-- "dm_long": 60-90 words, same hook, one more concrete fact about the student
+- "channel": "linkedin" or "email", and "channel_why": one short reason (network contacts: LinkedIn; founders/hiring-post authors with a found email: email)
+- "connect_note": max 250 characters, for 2nd-degree or cold contacts on LinkedIn; "" if they are already a 1st-degree connection
+- "dm": 50-90 words, the main message (LinkedIn DM or the email body): who {name} is -> why them specifically -> one ask
 - "followup": 20-35 words, to send once after 5 to 7 days, plain, no guilt-tripping
 - "ask_mutual": 25-45 words to the mutual connection asking for an intro (only for 2nd-degree, else "")
 - "blurb": 2-3 sentences a referrer could paste to a recruiter, in third person about {name}, factual
-
-Remember the rules in the style guide: one specific hook, one concrete fact, one easy question, no stock phrases, no dashes as punctuation, no lists, no exclamation marks. The first message asks a question or a pointer; it does not ask for a referral unless the person is a 1st-degree connection on the exact team.
+- "make_it_yours": 2-3 short, concrete suggestions for what {name} should add or change by hand (a personal detail only they know, a line to make rougher, a question only they would ask)
+The first message asks a question or a pointer; it does not ask for a referral unless the person is a 1st-degree connection on the exact team.
 Return ONLY a JSON array of these objects."""
 
 
-def facts():
+def facts(full=False):
+    """The candidate's true facts. full=True: every project, role and achievement (so the proof can be matched to what THIS company needs,
+    instead of always leading with the same project)."""
     P = PROFILE
-    proofs = [p.split(":", 1)[0] + ": " + p.split(":", 1)[1].strip()[:230] if ":" in p else p[:230] for p in P.get("projects", [])[:4]]
-    return " | ".join([P.get("summary", ""), P.get("education", "")] + P.get("experience", [])[:1] + proofs + P.get("achievements", [])[:2])
+    n = None if full else 4
+    cut = 600 if full else 230
+    proofs = [p.split(":", 1)[0] + ": " + p.split(":", 1)[1].strip()[:cut] if ":" in p else p[:cut] for p in P.get("projects", [])[:n]]
+    return " | ".join([P.get("summary", ""), P.get("education", "")] + P.get("experience", [])[: (None if full else 1)] + proofs + P.get("achievements", [])[: (None if full else 2)])
 
 
-def draft(job, targets, fit=""):
+def draft(job, targets, fit="", dossier=""):
     """targets: list of dicts from referral research (name, headline/role, degree, evidence, why_likely_to_respond, mutual). Returns list of message dicts."""
     if not targets:
         return []
     people = "\n".join(f"- {t.get('name')} | {t.get('role') or t.get('headline','')} | degree: {t.get('degree','cold')} | mutual: {t.get('mutual','')} | what they work on / evidence: {str(t.get('evidence') or t.get('why_them') or '')[:400]}" for t in targets)
-    prompt = PROMPT.format(style=humanize.style_pack(), name=PROFILE.get("first_name") or PROFILE.get("name", "the student"), facts=facts(),
-                           rules=" ".join(PROFILE.get("hard_rules", []))[:1200], company=job["company"], title=job["title"], location=job["location"], fit=fit[:400], people=people)
+    prompt = PROMPT.format(style=humanize.style_pack(), name=PROFILE.get("first_name") or PROFILE.get("name", "the student"), facts=facts(full=True)[:5000],
+                           rules=(" ".join(PROFILE.get("hard_rules", [])) + " " + " ".join("Never say: " + x for x in __import__("about").never_say()))[:1600], company=job["company"], title=job["title"], location=job["location"], fit=fit[:400],
+                           people=people, dossier=("COMPANY RESEARCH (pages JobAgent read; use for 'why them'):\n" + dossier) if dossier else "")
     import common
     prompt += common.job_context(job["id"], "outreach") if "id" in job.keys() else ""
     text, _ = run(prompt, kind="outreach", timeout=300, max_turns=2)
@@ -56,12 +65,15 @@ def draft(job, targets, fit=""):
         lst = next((v for v in items.values() if isinstance(v, list)), None)
         items = lst if lst is not None else ([items] if "name" in items else [dict(v, name=k) for k, v in items.items() if isinstance(v, dict)])
     items = [it for it in (items if isinstance(items, list) else []) if isinstance(it, dict)]
-    FIELDS = ("connect_note", "dm_short", "dm_long", "followup", "ask_mutual", "blurb")
+    for it in items:  # older callers read dm_short / dm_long
+        it.setdefault("dm_short", it.get("dm", ""))
+        it.setdefault("dm_long", "")
+    FIELDS = ("connect_note", "dm_short", "followup", "ask_mutual", "blurb")
     import grounding
-    src = [facts(), people, job["company"], job["title"], job["location"] or "", fit]
+    src = [facts(full=True), people, job["company"], job["title"], job["location"] or "", fit, dossier]
     extra = {f"{i}:{f}": [f"unsupported figure '{n}': remove it or use a number from the profile" for n in grounding.unsupported_numbers(it.get(f, ""), src)]
              for i, it in enumerate(items) for f in FIELDS}
-    fixed = humanize.polish_batch({f"{i}:{f}": it.get(f, "") for i, it in enumerate(items) for f in FIELDS}, ctx="These are LinkedIn messages from a student.", extra=extra)
+    fixed = humanize.polish_batch({f"{i}:{f}": it.get(f, "") for i, it in enumerate(items) for f in FIELDS}, ctx="These are LinkedIn messages and emails from a student. Keep the order: who they are, why this person, one ask.", extra=extra)
     out = []
     for i, it in enumerate(items):
         warn = []

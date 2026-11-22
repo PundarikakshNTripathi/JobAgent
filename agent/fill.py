@@ -132,7 +132,9 @@ def ensure_chrome():
         # detached + own process group: the browser (and the forms waiting for your Submit) outlives the task that started it,
         # including an aborted or timed-out one
         kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen([exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check", "--start-minimized", "about:blank"],
+    # parallel tasks each drive their own tab; without these flags Chrome throttles background tabs and loads in them crawl
+    subprocess.Popen([exe, f"--remote-debugging-port={PORT}", f"--user-data-dir={prof}", "--no-first-run", "--no-default-browser-check", "--start-minimized",
+                      "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "about:blank"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
     for _ in range(40):
         if _port_open():

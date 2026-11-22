@@ -10,7 +10,8 @@ STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui_static", 
 # command -> needs an argument?
 ALLOWED = {"cycle": False, "poll": False, "triage": False, "scout": False, "today": False, "dashboard": False, "usage": False, "yc-profile": False, "inbox": False,
            "reflect": False, "bench": False, "inbox-retry": False, "enable-schedule": False, "disable-schedule": False, "packet": True, "referral": True, "resume": True, "fill": True,
-           "linkedin": True, "mark": True, "agent": True, "retry": False, "rebuild": True, "signals": False, "regate": False, "sponsor": True}
+           "linkedin": True, "mark": True, "agent": True, "retry": False, "rebuild": True, "signals": False, "regate": False, "sponsor": True, "research": True, "discover": False, "events": False, "programs": False,
+           "event-strategy": True, "program-strategy": True, "cv": True, "interview": True, "stories": False, "github": False}
 SETTING_KEYS = {"poll_every_minutes", "min_heuristic_score_for_llm", "instant_alert_score", "max_triage_calls_per_day", "triage_batch_size", "max_triage_per_cycle", "triage_desc_chars",
                 "max_packets_per_day", "packet_min_fit", "max_referrals_per_day", "max_linkedin_per_day", "linkedin_browse", "max_fills_per_day", "auto_fill", "fill_window_local_hours",
                 "scout_every_days", "guard_minutes", "notify", "web", "humanize", "memory", "agent_mode", "llm", "include_new_grad_list", "recent_days_github_lists"}
@@ -65,7 +66,7 @@ def state():
                                 AND (j.id LIKE 'manual:%' OR j.last_seen IS NULL OR j.last_seen>=datetime('now','-14 days','localtime')))
                                OR j.status IN ({worked}))
                         ORDER BY COALESCE(t.fit,j.score) DESC LIMIT 1500""").fetchall()
-    progs = c.execute("SELECT name,org,kind,window,eligibility,url FROM programs ORDER BY added DESC").fetchall()
+    progs = c.execute("SELECT id,name,org,kind,window,eligibility,url,deadline,notes,strategy,track FROM programs ORDER BY CASE WHEN COALESCE(deadline,'')='' THEN 1 ELSE 0 END, deadline, added DESC").fetchall()
     import chatcmd, time as _t
     running = [t["key"] for t in chatcmd.tasks_json(40) if t["status"] in ("running", "starting")] + (["chat"] if CHAT_BUSY["on"] else [])
     lock = os.path.join(DATA, "cycle.lock")
@@ -329,6 +330,24 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self._send(200, page(), "text/html")
             if path == "/api/state":
                 return self._j(state())
+            if path == "/api/about":
+                import about, interview
+                return self._j({"sections": about.load(), "meta": [{"k": k, "title": t, "hint": h} for k, t, h in about.SECTIONS], "proposals": about.proposals(),
+                                "stories": interview.stories() if os.path.exists(interview.STORIES) else [], "github_at": common.meta_get(db(), "github_sync") or ""})
+            if path == "/api/followups":
+                import interview
+                return self._j({"items": interview.followups(), "funnel": interview.funnel()})
+            if path == "/api/events":
+                import events, discover
+                return self._j({"items": events.listing(), "misses": discover.misses_summary(), "refreshed": common.meta_get(db(), "events_refreshed") or ""})
+            if path == "/api/dossier":
+                import research
+                co, jid = (q.get("company") or [""])[0], (q.get("id") or [""])[0]
+                if jid and not co:
+                    r = db().execute("SELECT company FROM jobs WHERE id=?", (jid,)).fetchone()
+                    co = r["company"] if r else ""
+                d = research._get_cached("co:" + common.company_key(co), 3650) if co else None
+                return self._j({"company": co, "facts": (d or {}).get("facts", {}), "read": research.what_i_read(d), "at": (d or {}).get("at", ""), "flags": (d or {}).get("flags", [])})
             if path == "/api/tasks":
                 import chatcmd
                 return self._j({"tasks": chatcmd.tasks_json(60)})
@@ -437,6 +456,22 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._j({"error": "bad json"}, 400)
         path = urllib.parse.urlparse(self.path).path
         try:
+            if path == "/api/about":
+                import about
+                if "proposal" in d:
+                    return self._j({"ok": True, "message": about.decide(d["proposal"], bool(d.get("accept")))})
+                return self._j({"ok": True, "sections": about.save(d.get("sections") or {})})
+            if path == "/api/outcome":
+                import interview
+                jid, ev = str(d.get("id", "")), str(d.get("event", ""))
+                if ev == "reply":
+                    return self._j(interview.reply(jid, str(d.get("text", ""))[:6000]))
+                interview.record(jid, ev, str(d.get("note", ""))[:300])
+                return self._j({"ok": True})
+            if path == "/api/events":
+                import events
+                events.mark(str(d.get("id", "")), str(d.get("status", "")))
+                return self._j({"ok": True})
             if path == "/api/pause":
                 import pause, chatcmd
                 scopes = [x for x in (d.get("scopes") or ["all"]) if x in ("all",) + pause.SCOPES] or ["all"]

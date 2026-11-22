@@ -6,7 +6,8 @@
 import json, os, re
 from common import DEFAULTS, USER_SKILLS, DATA, db, now, log, SETTINGS, PROFILE, extract_json, meta_get, meta_set, today
 
-MEM = os.path.join(DATA, "memory", "MEMORY.md")
+MEM = os.path.join(DATA, "memory", "MEMORY.md")  # learned by reflect() from outcomes (rewritten daily)
+PINNED = os.path.join(DATA, "memory", "PINNED.md")  # what YOU told it (/remember, chat): reflect() never touches this
 TWEAKS = os.path.join(DATA, "memory", "score_tweaks.json")
 
 
@@ -26,19 +27,25 @@ def list_skills():
     return sorted(names)
 
 
-def memory_text(limit=3500):
+def _read(path, limit):
     try:
-        return open(MEM, encoding="utf-8").read()[-limit:]
+        return open(path, encoding="utf-8").read()[-limit:]
     except OSError:
         return ""
+
+
+def memory_text(limit=3500):
+    pinned, learned = _read(PINNED, limit // 2).strip(), _read(MEM, limit).strip()
+    out = ("YOU TOLD ME (always true unless you change it):\n" + pinned + "\n") if pinned else ""
+    return (out + (("LEARNED FROM OUTCOMES:\n" + learned) if learned else ""))[-limit:]
 
 
 def add_memory(note):
     import websafe
     if websafe.scan(note):  # memory poisoning: text that tries to steer the model never becomes a durable memory
         raise ValueError("not saved: the note contains instructions aimed at an AI (" + ", ".join(sorted({w for w, _ in websafe.scan(note)})) + ")")
-    os.makedirs(os.path.dirname(MEM), exist_ok=True)
-    with open(MEM, "a", encoding="utf-8") as f:
+    os.makedirs(os.path.dirname(PINNED), exist_ok=True)
+    with open(PINNED, "a", encoding="utf-8") as f:
         f.write(f"- ({today()}) {note.strip()}\n")
 
 
@@ -60,6 +67,13 @@ def context_pack(extra=""):
     prefs = PROFILE.get("preferences", {})
     out = [f"USER: {PROFILE.get('name','')} | {PROFILE.get('summary','')}", f"EDUCATION: {PROFILE.get('education','')}",
            f"PREFERENCES: {json.dumps(prefs)[:900]}"]
+    try:
+        import about
+        ab = about.prompt_block(2400)
+        if ab:
+            out.append(ab)
+    except Exception:
+        pass
     m = memory_text()
     if m:
         out.append("LEARNED MEMORY:\n" + m)
@@ -75,13 +89,16 @@ def context_pack(extra=""):
 
 REFLECT_PROMPT = """You maintain the long-term memory of a job-search agent for ONE user. Update it from the new evidence.
 
-CURRENT MEMORY
+WHAT THE USER TOLD YOU (true; never contradict or repeat it):
+{pinned}
+
+CURRENT LEARNED MEMORY
 {memory}
 
 RECENT OUTCOMES (event, note, job)
 {outcomes}
 
-Write the new memory as at most 25 short bullet lines of durable facts: the user's real preferences and dislikes (inferred from what they skip/apply to and why), which kinds of roles/companies they respond to, what messages or approaches worked, constraints. Drop stale or contradicted lines. No filler.
+Write the new LEARNED memory as at most 25 short bullet lines of durable facts supported by the outcomes (not guesses, not restatements of what the user told you): the user's real preferences and dislikes (inferred from what they skip/apply to and why), which kinds of roles/companies they respond to, what messages or approaches worked, constraints. Drop stale or contradicted lines. No filler.
 Also propose up to 6 small scoring tweaks for the job filter based on repeated patterns, e.g. the user keeps skipping 'forward deployed' roles.
 
 Return ONLY JSON: {{"memory":"bullets joined with newlines","tweaks":[{{"pattern":"regex on lowercase job title","delta":-12..12,"why":""}}]}}"""
@@ -94,14 +111,16 @@ def reflect(force=False):
     if not force and meta_get(c, "last_reflect") == today():
         return None
     rows = recent_outcomes(60)
-    if not rows and not memory_text():
-        return None
+    if not rows:
+        return None  # nothing new to learn from: keep the memory as it is
     from llm import run
     outs = "\n".join(f"{r['ts'][:10]} {r['event']} | {r['note'] or ''} | {r['company']} - {r['title']} (fit {r['fit']})" for r in rows) or "(none yet)"
-    text, _ = run(REFLECT_PROMPT.format(memory=memory_text() or "(empty)", outcomes=outs), kind="reflect", timeout=240, max_turns=2)
+    text, _ = run(REFLECT_PROMPT.format(pinned=_read(PINNED, 3000) or "(nothing)", memory=_read(MEM, 3500) or "(empty)", outcomes=outs), kind="reflect", timeout=240, max_turns=2)
     d = extract_json(text)
     os.makedirs(os.path.dirname(MEM), exist_ok=True)
-    open(MEM, "w", encoding="utf-8").write(d.get("memory", "").strip() + "\n")
+    new = (d.get("memory") or "").strip()
+    if len(new) >= 40 or not _read(MEM, 100).strip():  # an empty or junk answer never wipes what was learned before
+        open(MEM, "w", encoding="utf-8").write(new + "\n")
     tw = [t for t in d.get("tweaks", []) if t.get("pattern") and isinstance(t.get("delta"), (int, float))]
     for t in tw:
         try:

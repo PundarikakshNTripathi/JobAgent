@@ -31,13 +31,20 @@ COMMANDS = [
     ("resume", "/resume <id or words>", "Resume tailoring advice for that job (truthful, nothing invented).", "Prepare"),
     ("signals", "/signals", "Find fresh hiring posts (X, LinkedIn, under 24 h) and new seed rounds, and fill today's outreach queue (Outreach view).", "Run"),
     ("rebuild", "/rebuild <id or words>", "Redo the application, referral plan and resume advice for that job, using any notes you left for it (Details -> Rebuild).", "Prepare"),
+    ("sponsor", "/sponsor <id or words>", "Visa unclear job: research whether the employer sponsors visas, then move it back to your matches or out.", "Prepare"),
+    ("cv", "/cv <id or words>", "Tailored one-page PDF resume for that job: your verified bullets chosen and ordered for it, never rewritten.", "Prepare"),
     ("fill", "/fill <id or words> [--refill]", "Fill the application form in the agent browser. Never submits; you press Submit. --refill replays the last fill's values (no model call) after the browser was closed.", "Prepare"),
-    ("mark", "/mark <id or words> applied|skip|dismissed [reason]", "Record an outcome; reasons teach the agent.", "Track"),
+    ("mark", "/mark <id or words> applied|skip|dismissed|replied|screen|interview|offer|rejected|ghosted [reason]", "Record an outcome; reasons teach the agent, and the funnel shows which channels work.", "Track"),
+    ("reply", "/reply <id or words> -- <their reply>", "Paste an employer's reply: it is classified, recorded and you get the next step.", "Track"),
+    ("interview", "/interview <id or words>", "Interview prep for that role: what they will probe, which of your stories to use, what to revise, what to ask.", "Track"),
     ("add", "/add <link or text> [-- your context]", "Put an opportunity you found into the inbox and process it.", "Track"),
     ("retry", "/retry", "Retry inbox items that failed or are waiting on quota.", "Track"),
     ("inbox", "/inbox", "Show the inbox queue and each item's status.", "Track"),
     ("remember", "/remember <fact>", "Save a fact or preference to the agent's memory.", "Track"),
+    ("research", "/research <company>", "Read the company's site, team and blog pages, its LinkedIn page and news; store the facts with their sources (shown under Research).", "Prepare"),
     ("regate", "/regate", "Re-check every match, pick and packet against its full posting with the current rules (years by lower bound, degree, seniority, visa).", "Run"),
+    ("discover", "/discover", "Find more: LinkedIn Jobs from the last 24 h, Work at a Startup, X posts about programs, competitions and hackathons, and the boards of newly funded startups.", "Run"),
+    ("events", "/events", "Refresh conference deadlines, ML competitions and hackathons (Conferences & competitions view).", "Run"),
     ("scout", "/scout", "Scout programs, residencies and high-stakes openings now.", "Run"),
     ("today", "/today", "Build today's plan.", "Run"),
     ("poll", "/poll", "Poll all sources for new postings (no model tokens).", "Run"),
@@ -47,8 +54,9 @@ COMMANDS = [
     ("agent", "/agent <goal>", "Hand a multi-step goal to the autonomous agent loop (tools: search, packets, referrals, web).", "Run"),
 ]
 CMD = {c[0]: c for c in COMMANDS}
-JOB_CMDS = ("packet", "referral", "linkedin", "resume", "fill", "rebuild")
-PLAIN = ("scout", "today", "poll", "cycle", "yc-profile", "reflect", "signals", "regate")
+JOB_CMDS = ("packet", "referral", "linkedin", "resume", "fill", "rebuild", "sponsor", "cv", "interview")
+PLAIN = ("scout", "today", "poll", "cycle", "yc-profile", "reflect", "signals", "regate", "discover", "events", "programs", "stories", "github")
+TEXT_ARG = ("research", "event-strategy", "program-strategy")  # commands whose argument is free text (a company name), passed as one argument
 # what natural-language chat may start by itself; these never change a job's status and never submit anything
 NL_AUTO = JOB_CMDS[:4] + PLAIN[:3] + ("yc-profile", "retry", "remember", "ingest", "connections", "signals")
 NL_NEEDS_WORDS = {"fill": r"\bfill|auto-?fill", "mark": r"\b(mark|applied|skip|dismiss|ignore|reject)", "agent": r"\bagent|work on|figure out|research|find out|do this|take care"}
@@ -116,6 +124,10 @@ _JOBS_ARG = JOB_CMDS + ("mark",)
 
 
 def _argv(cmd, arg):
+    if cmd in ("event-strategy", "program-strategy"):
+        return [cmd.split("-")[0] + "s", "strategy", arg.strip()]
+    if cmd in TEXT_ARG:
+        return [cmd] + arg.split()
     return {"retry": ["inbox", "retry", arg or "all"], "mark": ["mark"] + arg.split()}.get(cmd, [cmd] + (arg.split() if cmd in JOB_CMDS else ([arg] if arg else [])))
 
 
@@ -487,6 +499,18 @@ def execute(cmd, rest="", source="slash"):
         return cmd_status()
     if cmd == "usage":
         return cmd_usage()
+    if cmd == "reply":
+        ref, _, body = rest.partition(" -- ")
+        job, msg = resolve(ref)
+        if not job or not body.strip():
+            return msg or "Usage: /reply <id or words> -- <their reply>"
+        import interview
+        d = interview.reply(job["id"], body)
+        return f"{d.get('type', '?')}: {d.get('summary', '')}\nNext: {d.get('next', '')}" + (f" (by {d['deadline']})" if d.get("deadline") else "") + f"\nRecorded as {d.get('recorded')}."
+    if cmd == "research":
+        if not rest:
+            return "Usage: /research <company>"
+        return f"Researching {rest} (company site, team and blog pages, LinkedIn page, news). " + launch("research", rest)
     if cmd == "tasks":
         rows = tasks_json(15)
         if not rows:
@@ -553,12 +577,20 @@ def execute(cmd, rest="", source="slash"):
         return "Handing that to the agent loop; I will post what it finds. " + launch("agent", rest)
     if cmd == "mark":
         words = rest.split()
-        idx = next((i for i, w in enumerate(words) if w.lower() in ("applied", "skip", "skipped", "dismissed", "dismiss")), -1)
+        EV = ("replied", "screen", "interview", "offer", "rejected", "ghosted")
+        idx = next((i for i, w in enumerate(words) if w.lower() in ("applied", "skip", "skipped", "dismissed", "dismiss") + EV), -1)
         if idx < 1:
             return "Usage: /mark <id or words> applied|skip|dismissed [reason]"
         job, msg = resolve(" ".join(words[:idx]))
         if not job:
             return msg
+        if words[idx].lower() in EV:
+            job, msg = resolve(" ".join(words[:idx]))
+            if not job:
+                return msg
+            import interview
+            interview.record(job["id"], words[idx].lower(), " ".join(words[idx + 1:]))
+            return f"Recorded {words[idx].lower()} for {_fmt_job(job)}."
         st = {"skip": "skipped", "skipped": "skipped", "applied": "applied", "dismiss": "dismissed", "dismissed": "dismissed"}[words[idx].lower()]
         common.set_status(db(), job["id"], st, by="user")
         common.record_outcome(job["id"], st, " ".join(words[idx + 1:]))

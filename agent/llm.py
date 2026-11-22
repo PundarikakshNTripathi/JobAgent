@@ -406,9 +406,10 @@ def _web_augment(prompt, route, o, kind):
     import web
     plan_prompt = ("You are planning web research for the task below. Output ONLY JSON: {\"queries\":[up to 6 precise web search queries],\"urls\":[up to 4 URLs that appear in the task and should be read]}.\n\nTASK:\n" + prompt[:9000])
     pr = route
-    wp = common.SETTINGS["llm"]["routing"].get("webplan")
+    rt = common.SETTINGS["llm"]["routing"]
+    wp = rt.get("research") or rt.get("webplan")
     if wp and wp.get("provider") not in (None, "", "auto") and available(wp["provider"])[0]:
-        pr = dict(wp)  # query planning is a small structured task: the cheap/local model does it
+        pr = dict(wp)  # gathering is the research model's job (local by default); the writing model only reads the notes
     try:
         t, u = call_provider(pr["provider"], pr, plan_prompt, {**o, "allowed_tools": "", "mcp_config": None, "timeout": 180, "kind": kind + "-plan"})
         _log_usage(kind + "-plan", pr["provider"], pr.get("model"), u, 0)
@@ -472,7 +473,7 @@ def run(prompt, *, kind="misc", allowed_tools="", model=None, timeout=300, extra
             continue
         t0 = time.time()
         try:
-            if need_web and not caps.get("web"):
+            if need_web and (not caps.get("web") or common.SETTINGS["llm"].get("force_local_research", True)):
                 p = _web_augment(prompt, route, o, kind)
                 oo["allowed_tools"] = ""
             text, usage = call_provider(name, route, p, oo)

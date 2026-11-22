@@ -156,13 +156,17 @@ GHOST_AGE_DAYS = 60
 _VAGUE_NEED = re.compile(r"\b(require|qualif|you have|you will|responsib|what you|experience with|we're looking|we are looking|about you|must|should)", re.I)
 
 
-def ghost_reasons(row, repost=False):
-    """Why a posting may be a ghost job (not really hiring): very old, reposted under a new id, or too vague to be a real role. '' = looks real."""
+GHOST_AGE_ANY = 240  # employers keep evergreen roles open for months on their own boards: age alone flags only aggregator copies, or very old ones
+
+
+def ghost_reasons(row, repost=False, aggregator=False):
+    """Why a posting may be a ghost job (not really hiring): an old copy on an aggregator list, very old anywhere, reposted under a new id,
+    or too vague to be a real role. '' = looks real."""
     why = []
     try:
         if row["posted"] and row["posted_src"] in ("feed", "age"):
             age = (dt.date.today() - dt.date.fromisoformat(row["posted"][:10])).days
-            if age > GHOST_AGE_DAYS:
+            if (aggregator and age > GHOST_AGE_DAYS) or age > GHOST_AGE_ANY:
                 why.append(f"posted {age} days ago")
     except ValueError:
         pass
@@ -186,7 +190,8 @@ def flag_ghosts():
         prev = earlier.get(norm(r["company"]) + "|" + norm(r["title"]), [])
         repost = any(fs and fs < (r["first_seen"] or "") and pid != r["id"] and (dt.datetime.fromisoformat(r["first_seen"][:19]) - dt.datetime.fromisoformat(fs[:19])).days >= 30
                      for fs, pid in prev) if r["first_seen"] else False
-        g = ghost_reasons(r, repost) or None
+        import pipeline
+        g = ghost_reasons(r, repost, aggregator=r["id"].split(":")[0].startswith(pipeline.AGGREGATORS)) or None
         if g != r["ghost"]:
             c.execute("UPDATE jobs SET ghost=? WHERE id=?", (g, r["id"]))
             n += 1

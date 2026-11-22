@@ -39,6 +39,8 @@ Runs on **Windows, macOS and Linux**. Everything personal stays on your computer
 7. [Referrals: real people, real messages](#7-referrals-real-people-real-messages) (and [Rebuild with your instructions](#rebuild-with-your-instructions))
    - [7b. Direct outreach: fresh hiring posts and seed rounds](#7b-direct-outreach-fresh-hiring-posts-and-seed-rounds)
 8. [The eligibility gate: full job descriptions](#8-the-eligibility-gate-full-job-descriptions)
+   - [8b. More to find: fellowships, papers and contests, discovery](#8b-more-to-find-fellowships-papers-and-contests-discovery)
+   - [8c. After you apply: replies, follow-ups, interviews, your tailored CV](#8c-after-you-apply-replies-follow-ups-interviews-your-tailored-cv)
 9. [Form filling (never submits)](#9-form-filling-never-submits)
 10. [Models: hosted, mixed, and local AI](#10-models-hosted-mixed-and-local-ai)
 11. [Cost and quota control](#11-cost-and-quota-control)
@@ -286,13 +288,17 @@ Mass applying is low-yield. A short, human email to the person who posted a role
 |---|---|
 | X: curated accounts (`@WalnutJobs`, `@benln`, `@katieschwartz`, `@suraj_sharma14`; add your own in `signals.x_accounts`) | Each "@person is hiring <role> for @company" line becomes a target. |
 | X: live search for "we're hiring" posts | Posts **under 24 hours old and under 100 likes**, relevant to your tracks. |
-| LinkedIn posts from the last 24 hours | Only posts by people who own the hire (founders, CTOs, engineering leads, researchers). Recruiters, staffing agencies and job-aggregator pages are dropped. |
+| LinkedIn posts from the last 24 hours | Only posts by people who own the hire (founders, CTOs, engineering leads, researchers), linked to **the post itself**. |
+
+Who counts is decided strictly. Your best model (task kind `review`) judges each post against your profile's tracks and interests and says who wrote it. Aggregator and jobs accounts, third-party and agency recruiters, job seekers and opinion posts are dropped, whatever the words say. So are posts that need an existing work permit elsewhere, and senior roles (II/III, 2+ years). "Meaningful work" counts for a quarter of the score. The author's bio is read before anything is queued.
 | Seed rounds: TechCrunch, Crunchbase News, Inc42, EU-Startups, and founders' own "we raised our seed" posts on X | Rounds from the last 7 days. For each startup: the founders and one engineer, from LinkedIn's current-company filter and names checked against the article. |
 
 For each target you get:
 - **Who and how to reach them:** their profile, plus an email **only where one was actually seen** (in the post, their X bio, their LinkedIn contact info, or their website) with where it was found. When only the company domain is known, a *first@domain* address is shown as an unverified pattern guess.
-- **A direction, not an email:** a subject idea, the hook from their post or product, which **one** of your real results answers their need, the single ask, how to frame it in under 5 lines, and one thing to avoid. Figures that aren't in your profile are flagged. You write the email yourself: short, specific, a little rough.
-- **Tracking:** mark each one *I sent it* or *Skip*; the view shows how many of today's 20 you've sent. One target per company and per person a day (reposts of the same round or the same founder posting four times count once).
+- **Research first:** before writing, JobAgent reads the company (its site, team, product and blog pages, its LinkedIn page, news) and the person (LinkedIn profile and recent activity, X bio and posts, their site). The local model extracts facts with their source; **What I read** lists every page and its size.
+- **A draft, tips, and the direction:** a short draft in your voice (under 5 lines: who you are, the specific thing about them, the one result of yours that fits, one ask) plus 2-3 **Make it yours** edits only you can make. The direction for writing it from scratch stays too. Figures that aren't in your profile are removed or flagged.
+- **Where to send it:** email when they published an address (founders and post authors read email); otherwise a LinkedIn connection note, an X reply, or their site.
+- **Tracking:** mark each one *I sent it* or *Skip*; the view shows how many of today's 20 you've sent. Unsent targets from earlier days stay in the queue with their age until you send or skip them, they are confirmed gone, or 30 days pass. One target per company and per person a day (reposts of the same round or the same founder posting four times count once).
 
 It runs in every pipeline run (stage "Catching fresh hiring posts and seed rounds"), and the button **Find fresh signals now** runs it immediately. Run it at least twice a day to stay inside the 24-hour window. Settings: `signals.daily_target`, `max_age_hours`, `max_likes`, `seed_max_age_days`, `x_accounts`, `x_queries`, `linkedin_queries`, `news_feeds`. Nothing is ever sent, liked, followed or replied to.
 
@@ -304,9 +310,11 @@ Feeds often carry only a teaser, so nothing gets a packet, a referral plan or a 
 
 | Check | Example that rules a job out |
 |---|---|
-| Years of experience | "3+ years", "two years", "5–7 years"; per-degree ladders such as "5+ years (Bachelor's) / 1+ (PhD)" use your degree's number. More than 1 year rules a job out. |
+| Years of experience | A range counts by its **lower bound** ("1-3 years" = 1). From `jd_gate.yoe_block_at` (default **1**) a job is out; "0-2 years", new grad and internships are in. Experience you can have as a student ("1+ years including internships or coursework") does not count against you. Per-degree ladders use your degree's number. |
 | Required degree | "Pursuing an MS or PhD", "PhD required". Mentions like "open to all degree levels" or alumni stories don't count. |
-| Seniority | Senior, Staff, Principal, Lead, Manager, level II/III titles. |
+| Seniority | Senior, Staff, Principal, Lead, Manager, level II/III titles. "Member of Technical Staff" is a flat title, not seniority. |
+| Visa and location | Roles abroad need sponsorship (from your profile's form answers). "Must be authorized to work in...", "no sponsorship" and remote-only-in-another-country are out. Abroad roles that **say nothing** about sponsorship go to **Visa unclear**: never APPLY, never auto-prepared. **Check sponsorship** researches the employer and settles it. Relocation help alone is not counted as a visa. |
+| No standard posting | A blog post, program page or form (a residency announced in a retrospective, a Typeform) is judged on the info page read in full, or on what you wrote about it, and marked "non-standard posting". |
 | Citizenship / clearance | "must be a U.S. citizen", "active secret clearance", ITAR. |
 | Graduation window | "for 2026 graduates" when you graduate in 2027. |
 | Closed postings | "no longer accepting applications": the job is hidden. |
@@ -314,6 +322,45 @@ Feeds often carry only a teaser, so nothing gets a packet, a referral plan or a 
 - **Before triage:** jobs that fail are dismissed before triage, which also saves tokens.
 - **Audit:** `jobagent audit` re-checks everything you've already picked or prepared and marks problems in My picks. It deletes nothing.
 - **Override:** if you still want a rejected job, add `--force` (CLI) or `force` (chat).
+- **The model can't overrule it:** triage is strict (APPLY only when you meet the stated requirements), and the deterministic gate runs after it. `jobagent regate` re-checks every match, pick and packet with the current rules. `tools/gate_eval.py` measures false drops and false passes on labelled real postings.
+- **Postings that close:** jobs you applied to or work on never disappear. They get a **Posting closed** chip, and My picks has a **Closed** tab. Aggregator copies expire per source. A feed outage is never treated as every posting closing. Old reposts and vague postings get **Possibly stale** and are never auto-prepared.
+
+---
+
+## 8b. More to find: fellowships, papers and contests, discovery
+
+- **Fellowships** (research internships, pre-docs, residencies, fellowships):
+  - Sources: a curated list in `defaults/programs.json` (add yours in `config/programs.json`), the web scout, inbox items that are programs, and X announcements.
+  - Each program's own page is read to fill in the window, deadline and whether it fits you, with the date checked.
+  - **Write a strategy** gives a timeline, materials, who to talk to and the risks.
+- **Papers & contests:**
+  - Top-tier AI, ML-systems, systems and architecture deadlines (from ccfddl), plus rolling journals (TMLR, JMLR).
+  - ML competitions with real prizes or prestige (via mlcontests: Kaggle, AIcrowd, conference competition tracks).
+  - AI hackathons you can join online or in your country (Devpost).
+  - Fit is scored from your interests. **Strategy** reads the event's page and plans from your real record; the top few get one weekly.
+- **Discovery, once a day** (`jobagent discover`):
+  - LinkedIn Jobs from the last 24 hours (internship and entry level, your tracks).
+  - YC Work at a Startup (logged in), with each role's visa line.
+  - X searches for residencies, fellowships, competitions and hackathons.
+  - The job boards of startups that just raised a seed round are added to the boards polled every run.
+  - Everything you add yourself is logged with its source, so Usage shows which sources keep missing things.
+
+## 8c. After you apply: replies, follow-ups, interviews, your tailored CV
+
+- **What happened next:** on an applied job, **What happened?** records replied, screen, interview, offer, rejected or ghosted. **Paste their reply** has your best model classify it, record it and tell you the next step.
+- **Follow-ups:** Today lists applications with no reply after a week and outreach sent 5+ days ago.
+- **The funnel:** Usage shows, per channel, how many applications got a reply, a screen, an interview or an offer. Channels are referral, direct outreach, board, YC and your own finds.
+- **Interview prep** (`jobagent interview <id>`): what they will probe, what to revise, which of your stories to use, what to ask them. It is written into the job's folder.
+- **Story bank** (`jobagent stories`): 6-10 true STAR+R stories from your projects, internship and achievements. Figures that aren't in your facts are flagged.
+- **Tailored one-page CV** (`jobagent cv <id>`):
+  - It uses **your own resume generator** (`profile.resume_generator`: a verified bullet bank with `build()`).
+  - The model only chooses and orders your verified bullets for the job; it never writes text.
+  - A gate in code checks that every line is verbatim from the bank, tectonic compiles it, and anything over one page is trimmed or refused.
+  - The PDF goes into the job's folder and becomes the resume the form filler uploads.
+- **About me:**
+  - Your story, goals, projects in depth, recent wins, constraints and **things never to say** (enforced) are fed to everything that writes for you.
+  - GitHub is checked weekly: your most active, best-kept repositories become **proposals** you accept or dismiss. Nothing is added on its own.
+  - `/remember` notes are pinned; the daily reflection never overwrites them.
 
 ---
 
@@ -508,7 +555,13 @@ These apply to every model, hosted or local.
 | `signals [collect\|queue\|list]` · `rebuild <id> [packet,referral,resume\|all]` | Fresh hiring posts and seed rounds into today's outreach queue · redo one job's material with your notes for it. |
 | `audit` · `refresh [--no-plans]` | Re-check picks, packets and the watchlist against full job descriptions · re-check postings and flag/rebuild outdated referral plans. |
 | `selftest [provider]` | Run every task's real prompt on one provider and check the outputs (default: local). |
-| `mark <id> applied\|skip\|dismissed [reason]` | Record an outcome; reasons teach the agent. |
+| `mark <id> applied\|skip\|dismissed\|replied\|screen\|interview\|offer\|rejected\|ghosted [reason]` | Record an outcome; reasons teach the agent and feed the funnel. |
+| `pause [all\|local\|api\|subscription]` · `resume [..]` | Stop all AI use (local model and GPU, API keys, subscriptions) until you resume; scheduled runs stay off too. |
+| `regate [--no-browser]` · `sponsor <id>` | Re-check every match, pick and packet with the current rules · settle a Visa unclear job by researching the employer. |
+| `research <company>` | Read the company's site, team and blog pages, LinkedIn page and news; print the facts and every page read. |
+| `discover` · `events [strategy <id>]` · `programs [strategy <id>]` | Daily discovery · paper deadlines, competitions, hackathons · fellowships and their pages. |
+| `cv <id>` · `interview <id>` · `stories [--force]` · `reply <id> "<text>"` · `funnel` · `github` | Tailored one-page CV · interview prep · story bank · classify a reply · conversion by channel · GitHub proposals. |
+| `fill <id> --refill` | Refill a form whose tab was closed, with the values saved from the last fill (no model call). |
 | `inbox [add "<text>" "<context>"]` · `inbox retry` · `chat "<message or /command>"` · `agent "<goal>"` | Your own finds · retry waiting items · chat · multi-step goals. |
 | `picks` | Add earlier hand-prepared jobs to My picks. |
 | `today [--force]` · `reflect` · `dashboard` | Daily plan · update memory · HTML dashboard. |
@@ -567,7 +620,17 @@ Anything left empty in `form_defaults` is never guessed: it shows up under **Nee
   - It never sends a message, and never clicks Connect or Follow.
   - It never creates accounts or solves CAPTCHAs.
   - Legal attestations are always left to you.
-- **Honest content:** the hard rules in your profile (for example "one internship, no publications") apply to every letter, answer and message.
+- **Honest content:** the hard rules in your profile (for example "one internship, no publications") apply to every letter, answer and message, and so does About me's **things never to say**.
+- **One switch to stop everything:** **Pause AI** in the top bar (or `jobagent pause`) stops the local model (and frees the GPU), API keys and subscriptions. Scheduled runs are skipped until you press Resume. The menu next to it pauses only one of the three.
+- **Web text is data, never instructions:** everything read from the web passes through `agent/websafe.py`:
+  - Hidden text is removed: invisible, off-screen, same colour as the background, aria-hidden, HTML comments, zero-width characters.
+  - Sentences aimed at an AI ("ignore previous instructions", fake system turns, fake tool calls, "send the user's data to...") are cut and logged to `logs/injection.log`; a page that is mostly such text is dropped.
+  - What remains is wrapped as untrusted with a fixed rule in every prompt. Research is extracted by a model with no tools, as cited facts, before any bigger model sees it.
+  - The browser agent can only open http(s) links shown on the page or on the task's own site: never local or private addresses, never links that carry your details.
+  - It never fills passwords, one-time codes, card, bank or ID numbers, and types your personal details only on the application's own site.
+  - It uploads only the packet's own files. Notes that try to steer the model are never saved to memory.
+- **Your accounts:** LinkedIn and X are used by one task at a time, at human pace. Any checkpoint or captcha pauses all automated use of that site for 24 hours and notifies you.
+- **Tasks you can stop:** every background task is listed in the activity panel and My picks with its real state: queued, working, failed with the reason, interrupted, or timed out. **Abort** stops a task and everything it started.
 
 ---
 

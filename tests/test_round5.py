@@ -235,12 +235,101 @@ class Ghost(unittest.TestCase):
     def test_reasons(self):
         old = (dt.date.today() - dt.timedelta(days=90)).isoformat()
         row = {"posted": old, "posted_src": "feed", "desc": "Join us.", "jd_full": 1}
-        why = maintenance.ghost_reasons(row)
+        self.assertNotIn("posted", maintenance.ghost_reasons(row))  # an employer's own evergreen posting is not stale for its age alone
+        why = maintenance.ghost_reasons(row, aggregator=True)
         self.assertIn("posted 90 days ago", why)
         self.assertIn("very short", why)
         fresh = {"posted": dt.date.today().isoformat(), "posted_src": "feed", "desc": "Requirements: Python. You will build things." + " x" * 500, "jd_full": 1}
         self.assertEqual(maintenance.ghost_reasons(fresh), "")
         self.assertIn("reposted", maintenance.ghost_reasons(fresh, repost=True))
+
+
+class OutreachQuality(unittest.TestCase):
+    def test_linkedin_post_link_is_the_post(self):
+        self.assertEqual(signals.post_url("urn:li:activity:7398765432101234567"), "https://www.linkedin.com/feed/update/urn:li:activity:7398765432101234567/")
+        self.assertEqual(signals.post_url(""), "")
+        p = signals._parse_li_post({"author_url": "https://www.linkedin.com/in/jo", "urn": "urn:li:ugcPost:123",
+                                    "text": "Feed post\nJo\n• 2nd\nCTO at Acme\n3h\nWe're hiring an ML engineer."})
+        self.assertIn("/feed/update/urn:li:ugcPost:123/", p["post_url"])
+
+    def test_prose_is_not_an_email(self):
+        self.assertEqual(signals.emails_in("I was working at Cruise. Jeff said hi"), [])
+        self.assertEqual(signals.emails_in("reach me: jo [at] acme [dot] ai"), ["jo@acme.ai"])
+        self.assertEqual(signals.emails_in("jo at acme dot com"), ["jo@acme.com"])
+
+    def test_not_hirers(self):
+        self.assertTrue(signals.JOB_SEEKER.search("Looking to join an early-stage YC startup as an ML engineer"))
+        self.assertTrue(signals.JOB_SEEKER.search("#OpenToWork after my internship"))
+        self.assertTrue(signals.AGG_HARD.search("rozgarjobsdotin"))
+        self.assertTrue(signals.AGG_HARD.search("remoteornothing"))
+        self.assertTrue(signals.AGG_BIO.search("We share daily jobs and internships for freshers"))
+        self.assertFalse(signals.HIRING.search("Founding engineers are the backbone of every startup"))  # an opinion, not a role
+        self.assertTrue(signals.HIRING.search("We're hiring a founding ML engineer in Bangalore"))
+        self.assertTrue(signals.SENIOR_HARD.search("ML Engineer II"))
+
+    def test_channel(self):
+        r = {"author_url": "https://www.linkedin.com/in/jo", "handle": ""}
+        self.assertEqual(signals.channel_for(r, {"emails": [{"email": "jo@acme.ai", "source": "their site"}]})["pick"], "email")
+        self.assertEqual(signals.channel_for(r, {"emails": []})["pick"], "linkedin")
+
+    def test_your_voice_is_not_a_tell(self):
+        import humanize
+        with mock.patch.object(humanize, "_voice_text", return_value="hey sahil. i would love to work on these.\n1. aegis\n2. ternix"):
+            issues = humanize.lint("Hey Jo. I would love to help with inference.\n1. Aegis\n2. Ternix")
+        self.assertFalse(any("would love" in i for i in issues))
+        self.assertNotIn("bullet list", issues)
+        self.assertEqual(humanize.autofix("Fast — really fast"), "Fast - really fast")
+
+
+class AboutMemoryFunnel(unittest.TestCase):
+    def test_about_sections_roundtrip_and_never_say(self):
+        import about
+        about.save({"story": "Final-year student building ML systems.", "never": "- Vanguard\n- CoreTwin"})
+        a = about.load()
+        self.assertEqual(a["story"], "Final-year student building ML systems.")
+        self.assertEqual(about.never_say(), ["Vanguard", "CoreTwin"])
+        self.assertIn("NEVER SAY OR CLAIM: Vanguard; CoreTwin", about.prompt_block())
+
+    def test_proposals_need_your_ok(self):
+        import about
+        about.propose("github", "projects", "Aegis: eBPF LSM guard", "https://github.com/x/aegis", key="t1")
+        self.assertFalse(about.propose("github", "projects", "Aegis: eBPF LSM guard", "https://github.com/x/aegis", key="t1"))  # no duplicates
+        self.assertNotIn("Aegis", about.load()["projects"])
+        pid = about.proposals()[0]["id"]
+        about.decide(pid, True)
+        self.assertIn("Aegis: eBPF LSM guard", about.load()["projects"])
+
+    def test_reflect_never_wipes_what_you_told_it(self):
+        import memory
+        memory.add_memory("Prefers MLSys over SWE")
+        with mock.patch("llm.run", return_value=('{"memory": "", "tweaks": []}', {})):
+            common.record_outcome("x", "skipped", "too senior")
+            memory.reflect(force=True)
+        self.assertIn("Prefers MLSys over SWE", memory.memory_text())
+
+    def test_funnel_by_channel(self):
+        import interview
+        add_job("manual:f1", "A", "Intern")
+        add_job("greenhouse:f2", "B", "Intern")
+        for jid in ("manual:f1", "greenhouse:f2"):
+            common.record_outcome(jid, "applied")
+        interview.record("manual:f1", "interview")
+        f = interview.funnel()
+        self.assertEqual(f["inbox"]["applied"], 1)
+        self.assertEqual(f["inbox"]["interview"], 1)
+        self.assertEqual(f["board"]["interview"], 0)
+        self.assertEqual(common.db().execute("SELECT status FROM jobs WHERE id='manual:f1'").fetchone()[0], "interviewing")
+
+
+class CVGate(unittest.TestCase):
+    def test_only_bank_lines_pass(self):
+        import cv, tempfile, types
+        g = types.SimpleNamespace(B={"p": {"title": "T", "tags": "x", "path": "u/p", "b": {"a": "Verified bullet 1.2x"}}}, FLY={"b": {"r": "Intern bullet"}}, ACH={"h": "2nd place"}, SKILL_SETS={})
+        d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(d, "src"))
+        open(os.path.join(d, "src", "projects.tex"), "w").write("\\resumeItem{Verified bullet 1.2x}\n\\resumeItem{Invented 10x speedup}\n")
+        open(os.path.join(d, "src", "experience.tex"), "w").write("\\resumeItem{Intern bullet}\n")
+        self.assertEqual(cv.fact_gate(d, g), ["Invented 10x speedup"])
 
 
 class Gate(unittest.TestCase):

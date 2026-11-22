@@ -147,7 +147,8 @@ def start(model=None, ctx=None, wait=900):
     if not model:
         raise RuntimeError("no local model fits this machine")
     hw = detect()
-    args = [b, "-hf", model, "--host", "127.0.0.1", "--port", str(PORT), "-c", str(ctx), "--jinja", "--alias", "local", "-np", "1"]
+    par = max(1, int(rec.get("parallel", 1)))  # llama-server splits -c across slots: give each slot the full context
+    args = [b, "-hf", model, "--host", "127.0.0.1", "--port", str(PORT), "-c", str(ctx * par), "--jinja", "--alias", "local", "-np", str(par)]
     if hw["backend"] != "cpu":
         args += ["-ngl", "99", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
     logf = open(os.path.join(LOGS, "llama-server.log"), "a", encoding="utf-8")

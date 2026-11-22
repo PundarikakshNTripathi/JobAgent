@@ -128,6 +128,11 @@ def process(item_id, build=True):
                       (jid, it.get("company") or "?", tier, cat or "manual", it.get("title") or "(untitled)", it.get("location", ""), it.get("url") or "", "manual", "", now(), now(),
                        96.0, sc["loc_class"], sc["family"] or "ai_research", 1, sc["yoe"], desc, sc["visa"]))
             new_ids.append(jid)
+            try:
+                import discover
+                discover.record_miss(jid, it.get("info_url") or it.get("url") or "", it.get("company") or "", (row["context"] or "")[:200])
+            except Exception:
+                pass
         c.execute("UPDATE jobs SET info_url=COALESCE(NULLIF(?,''),info_url), apply_url=COALESCE(NULLIF(?,''),apply_url) WHERE id=?",
                   (it.get("info_url") or "", it.get("apply_url") or "", jid))
         if it.get("kind") == "program":  # residencies, fellowships, research programs also appear in Research & fellowships

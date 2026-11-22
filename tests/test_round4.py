@@ -121,7 +121,7 @@ class SignalParsers(unittest.TestCase):
         signals._put(c, "q1", "post", "x:search", "w1", "Ben Ode", "https://x.com/ben", "ben", "", "", "ML Intern", "We're hiring ML interns", common.now(), 1)
         c.execute("UPDATE signals SET relevance=80")
         c.commit()
-        with mock.patch.object(signals, "find_contact", return_value={"emails": []}), mock.patch.object(signals, "write_angle", return_value={}):
+        with mock.patch.object(signals, "find_contact", return_value={"emails": []}), mock.patch.object(signals, "research_target", return_value={}), mock.patch.object(signals, "write_angle", return_value={}):
             n = signals.build_queue(c, dict(signals.cfg(), daily_target=20))
         self.assertEqual(n, 2)  # Ana once, Ben once
 
@@ -140,7 +140,7 @@ class SignalParsers(unittest.TestCase):
         c.execute("UPDATE signals SET relevance=80")
         c.commit()
         with mock.patch.object(signals, "find_contact", return_value={"emails": []}), mock.patch.object(signals, "seed_people", return_value=([], "")), \
-                mock.patch.object(signals, "write_angle", return_value={"hook": "h"}):
+                mock.patch.object(signals, "research_target", return_value={}), mock.patch.object(signals, "write_angle", return_value={"hook": "h"}):
             n = signals.build_queue(c, dict(signals.cfg(), daily_target=20))
         self.assertEqual(n, 1)
         q = c.execute("SELECT author FROM signals WHERE status='queued'").fetchone()

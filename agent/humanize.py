@@ -16,12 +16,18 @@ TELLS = [
 _TELL_RX = [re.compile(t, re.I) for t in TELLS]
 
 
+def _voice_text():
+    return _read(VOICE, 20000).lower()
+
+
 def lint(text):
-    """Return a list of human-readable issues. Empty list = reads fine."""
+    """Return a list of human-readable issues. Empty list = reads fine. Anything that appears in messages you actually sent (data/voice.md) is
+    your voice, not an AI tell, and is never flagged."""
     issues = []
+    voice = _voice_text()
     for rx in _TELL_RX:
         m = rx.search(text)
-        if m:
+        if m and m.group(0).lower() not in voice:
             issues.append(f"tell: '{m.group(0)}'")
     if "—" in text or "–" in text or " -- " in text:
         issues.append("em/en dash used as punctuation")
@@ -29,22 +35,22 @@ def lint(text):
         issues.append("exclamation mark")
     if ";" in text:
         issues.append("semicolon")
-    if re.search(r"(?m)^\s*([-*•]|\d+\.)\s", text):
+    if re.search(r"(?m)^\s*([-*•]|\d+\.)\s", text) and not re.search(r"(?m)^\s*([-*•]|\d+\.)\s", voice):
         issues.append("bullet list")
     if re.search(r"\b\w+, \w+(?: \w+)?, and \w+", text):
         issues.append("three-item list")
     sents = [s.strip() for s in re.split(r"(?<=[.?!])\s+", text) if s.strip()]
-    if len(sents) >= 3 and sum(1 for s in sents if s.startswith("I ")) > len(sents) / 2:
+    if len(sents) >= 4 and sum(1 for s in sents if s.startswith("I ")) > len(sents) * 0.6:
         issues.append("most sentences start with 'I'")
     return issues
 
 
 def autofix(text):
     t = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-    t = re.sub(r"\s*[—–]\s*", ", ", t)
-    t = t.replace(" -- ", ", ")
-    t = t.replace(";", ",")
-    t = re.sub(r"!+", ".", t)
+    t = re.sub(r"\s*[—–]\s*", " - ", t)  # a plain hyphen reads human; turning dashes into commas made comma splices
+    t = t.replace(" -- ", " - ")
+    t = re.sub(r";\s*", ". ", t)
+    t = re.sub(r"!{2,}", "!", t)
     t = re.sub(r"(?i)\b(thanks in advance|looking forward to hearing from you|best regards|kind regards),?\.?", "", t)
     t = re.sub(r"[ \t]{2,}", " ", t)
     t = re.sub(r",\s*\.", ".", t)
@@ -107,7 +113,7 @@ def polish_batch(fields, ctx="", extra=None):
                   "\nReturn ONLY a JSON object mapping each key to its rewritten text.\n\n" +
                   _j.dumps({k: {"problems": iss, "text": t} for k, (t, iss) in flagged.items()}, ensure_ascii=False))
         try:
-            new, _ = run(prompt, kind="outreach", timeout=180, max_turns=1)
+            new, _ = run(prompt, kind="review", timeout=180, max_turns=1)
             from common import extract_json
             d = extract_json(new)
             for k, v in (d.items() if isinstance(d, dict) else []):
@@ -132,7 +138,7 @@ def polish(text, kind="outreach", ctx="", rewrite=True):
                   ".\nRules: plain words, contractions, no flattery, no dashes as punctuation, no lists, no exclamation marks, no stock phrases. Output ONLY the rewritten text.\n"
                   f"{ctx}\n\nTEXT:\n{t}")
         try:
-            new, _ = run(prompt, kind="outreach", timeout=120, max_turns=1)
+            new, _ = run(prompt, kind="review", timeout=120, max_turns=1)
             new = autofix(new.strip().strip('"'))
             if len(lint(new)) < len(issues):
                 t, issues = new, lint(new)

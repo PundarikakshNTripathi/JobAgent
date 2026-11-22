@@ -129,13 +129,13 @@ def plan_referral(job_id, manual=False, require_linkedin=False, force=False):
              "\n".join(f"- {h['name']} | {h['position']} | connected {h['connected_on']} | {h['url']}" for h in hits)
         tasks = ("1. Research each listed connection on the public web (name + company + role) to learn their real work/team.\n"
                  "2. Pick the best 1-2 to approach (relevant team, approachable seniority) plus a recruiter/university-recruiting route if listed; explain why.\n"
-                 "3. Draft the messages. These are existing connections, so a DM (not a connection request) fits; acknowledge the connection is dormant honestly and briefly.")
+                 "3. Note for each what makes a natural opening (their team, a recent post or project) in 'evidence'. These are existing connections, so a DM (not a connection request) fits later.")
     else:
         cb = ("NO EXISTING CONNECTIONS FOUND" + (" (connections file is present but nothing matched this company)" if conns else " (no LinkedIn export found in data/ yet)") +
               ". Find warm paths on the public web instead: the hiring manager or team named in the posting, authors of the team's recent papers/blog posts, open-source maintainers of the relevant repo, "
               f"and alumni of the candidate's university ({PROFILE.get('education', '')}) at the company if you can find any publicly.")
         tasks = ("1. Identify 2-3 specific real people (cite where you found them) who work on the relevant team/problem.\n"
-                 "2. Rank them by approachability and relevance.\n3. Draft cold-outreach messages (connection note, DM, email if a public email exists).")
+                 "2. Rank them by approachability and relevance.\n3. For each, put a specific, checkable hook (what they built/wrote/said, with the URL) in 'evidence', and a public email in how_to_reach only if a page you read shows it.")
     if not SETTINGS.get("linkedin_browse", True) and not require_linkedin:
         li_note = "LinkedIn browsing is switched off in settings (linkedin_browse), so this plan uses public-web research only."
     elif not (manual or require_linkedin) and budget_used(c, "linkedin") >= SETTINGS.get("max_linkedin_per_day", 1):

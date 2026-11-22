@@ -164,10 +164,13 @@ def run(goal, start_url, *, mode="read", kind="browse", max_steps=25, init_scrip
             if "linkedin.com" in start_url or mode == "read":
                 import browser
                 page.add_init_script(browser.READONLY_GUARD)
+            browse.hold_site(start_url)
             page.goto(start_url, wait_until="domcontentloaded", timeout=45000)
             time.sleep(2.5)
             for left in range(max_steps, 0, -1):
                 if browse.WALL.search(page.url):
+                    if browse.site_of(page.url) and re.search(r"checkpoint|captcha|challenge", page.url, re.I):
+                        browse.pause_social(browse.site_of(page.url), page.url[:120])
                     return {"result": {"error": f"login wall or security check at {page.url}; log in once in the agent browser and retry"}, "steps": max_steps - left, "url": page.url, "log": steps_log, "seen": sorted(seen)}
                 if mode == "read":
                     try:
@@ -215,6 +218,7 @@ def run(goal, start_url, *, mode="read", kind="browse", max_steps=25, init_scrip
                         u = str(d.get("url", ""))
                         if not u.startswith("http"):
                             raise ValueError("goto needs a full http(s) URL")
+                        browse.hold_site(u)
                         page.goto(u, wait_until="domcontentloaded", timeout=45000)
                         res = f"opened {u}"
                     elif act == "click":
